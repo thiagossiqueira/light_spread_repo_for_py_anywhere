@@ -2,7 +2,7 @@ import sys
 import os
 
 # Caminho absoluto para o diretório do projeto
-project_home = '/home/tsiqueira4/spread-model'
+project_home = '/home/tsiqueira4/light_spread_repo_for_py_anywhere'
 
 # Garante que o diretório esteja no sys.path
 if project_home not in sys.path:
