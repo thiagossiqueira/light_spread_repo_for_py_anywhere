@@ -13,6 +13,7 @@ from src.utils.plotting import (
     show_summary_table,
     show_di_summary_table,
     show_ipca_summary_table,
+    show_benchmark_table
 )
 from src.core.windowing import build_observation_windows
 from src.core.spread_calculator import compute_spreads
@@ -89,9 +90,15 @@ if __name__ == "__main__":
             # Tabela resumo da curva
             table_func = show_di_summary_table if tipo == "di" else show_ipca_summary_table
             summary_fig = table_func(df_vis)
+
             if summary_fig is not None:
-                summary_fig.write_html(f"templates/{tipo}_summary_table.html", include_plotlyjs="cdn")
-                print_fn(f"✅ {tipo}_summary_table.html salvo com sucesso.")
+                title = "Bond Yield vs DI Interpolated Yield and Spread Summary" if tipo == "di" else "Bond Yield vs IPCA Interpolated Yield and Spread Summary"
+                path = f"templates/summary_{tipo.upper()}_table.html"
+
+                summary_fig.update_layout(title_text=title)
+
+                summary_fig.write_html(path, include_plotlyjs="cdn", full_html=True)
+                print(f"✅ summary_{tipo.upper()}_table.html salvo com sucesso.")
             else:
                 print_fn(f"⚠️ {tipo}_summary_table.html não foi gerado.")
 
@@ -137,3 +144,28 @@ if __name__ == "__main__":
             pd.DataFrame(skipped, columns=["Bond ID", "Obs Date", "Reason"]).to_csv(
                 f"data/skipped_{tipo}_yields.csv", index=False
             )
+
+    # 1. Carrega os dois resultados finais
+    df_di = pd.read_excel("data/corp_bonds_di_summary.xlsx")[["Bond ID"]].copy()
+    df_ipca = pd.read_excel("data/corp_bonds_ipca_summary.xlsx")[["Bond ID"]].copy()
+
+    df_di["Benchmark"] = "DI"
+    df_ipca["Benchmark"] = "IPCA"
+
+    df = pd.concat([df_di, df_ipca], axis=0).drop_duplicates()
+
+    # 2. Carrega metadata com múltiplas colunas desejadas
+    cols = ["id", "ISSUER", "ULT_PARENT_TICKER_EXCHANGE", "industry_group", "TOT_DEBT_TO_EBITDA", "CIE DES BULK"]
+    corp_data = load_corp_bond_data(CONFIG["CORP_PATH"])[cols].copy()
+
+    # 3. Merge com metadados
+    df = df.merge(corp_data, left_on="Bond ID", right_on="id", how="left").drop(columns="id")
+
+    # 6. Salva HTML interativo
+    html_output = show_benchmark_table(df)
+    with open("templates/benchmark_summary_table.html", "w", encoding="utf-8") as f:
+        f.write(html_output)
+
+    print("✅ benchmark_summary_table.html gerado com sucesso.")
+
+
