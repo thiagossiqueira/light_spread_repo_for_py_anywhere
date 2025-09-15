@@ -93,7 +93,7 @@ if __name__ == "__main__":
 
             if summary_fig is not None:
                 title = "Bond Yield vs DI Interpolated Yield and Spread Summary" if tipo == "di" else "Bond Yield vs IPCA Interpolated Yield and Spread Summary"
-                path = f"templates/summary_{tipo.upper()}_table.html"
+                path = f"templates/{tipo.lower()}_summary_table.html"
 
                 summary_fig.update_layout(title_text=title)
 
@@ -161,8 +161,13 @@ if __name__ == "__main__":
     # 3. Merge com metadados
     df = df.merge(corp_data, left_on="Bond ID", right_on="id", how="left").drop(columns="id")
 
+    # Exportar Excel
+    df_excel = df[["Bond ID", "ISSUER", "ULT_PARENT_TICKER_EXCHANGE", "industry_group", "TOT_DEBT_TO_EBITDA", "CIE DES BULK"]].copy()
+    df_excel.columns = ["Bond ID", "Emisor", "Código de Bolsa", "Setor", "Deuda/EBITDA", "Descripciones"]
+    df_excel.to_excel(f"data/benchmark_summary_table.xlsx", index=False)
+
     # 6. Salva HTML interativo
-    html_output = show_benchmark_table(df)
+    html_output = show_benchmark_table(df_excel)
     with open("templates/benchmark_summary_table.html", "w", encoding="utf-8") as f:
         f.write(html_output)
 

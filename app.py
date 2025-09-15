@@ -51,7 +51,6 @@ def summary(prefixo):
     else:
         return "Tipo inválido", 400
 
-
 # ----------- CURVAS DI e IPCA (WLA) ----------------
 @app.route("/surface/<prefixo>")
 def surface(prefixo):
@@ -91,6 +90,13 @@ def download(prefixo):
         return send_file(
             "data/corp_bonds_ipca_summary.xlsx",
             download_name="corp_bonds_ipca_summary.xlsx",
+            as_attachment=True,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    elif prefixo == "benchmark":
+        return send_file(
+            "data/benchmark_summary_table.xlsx",
+            download_name="benchmark_summary_table.xlsx",
             as_attachment=True,
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
