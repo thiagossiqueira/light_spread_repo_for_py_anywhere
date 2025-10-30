@@ -351,6 +351,44 @@ di as res ">> Após filtro (fundamentais disponíveis): " r(N)
 save "`path_out'", replace
 di as res ">> Base limpa atualizada com filtro de #N/A nas variáveis fundamentais."
 
+* ===========================================================
+* 7C) Resumen de bonos únicos, emisores y cobertura (post-filtro)
+* ===========================================================
+di as txt "==========================================================="
+di as txt ">>> RESUMEN DE BONOS TRAS FILTRADO DE FUNDAMENTALES"
+di as txt "==========================================================="
+
+* Bonos únicos (id = identificador del bono)
+bys id: gen byte __tag_bond = _n==1
+count if __tag_bond
+di as res ">> Bonos únicos tras filtro: " r(N)
+
+* Emisores únicos (si existe issuer_id)
+capture confirm variable issuer_id
+if !_rc {
+    bys issuer_id: gen byte __tag_issuer = _n==1
+    count if __tag_issuer
+    di as res ">> Emisores únicos tras filtro: " r(N)
+}
+
+* Distribución de tipo de bono (DI vs IPCA) si disponible
+capture confirm variable bond_type
+if !_rc {
+    di as txt ">> Distribución por tipo de bono (bond_type):"
+    tab bond_type if __tag_bond, m
+}
+
+* Número de observaciones por bono
+bys id: gen __nmeses = _N if __tag_bond
+summ __nmeses if __tag_bond, detail
+di as res ">> Media de observaciones mensuales por bono: " r(mean)
+di as res ">> Máximo de observaciones mensuales por bono: " r(max)
+di as res ">> Mínimo de observaciones mensuales por bono: " r(min)
+
+drop __tag_bond __nmeses
+capture drop __tag_issuer
+di as txt "==========================================================="
+
 
 * ================================
 * 8) ENHANCEMENTS — escala, winsor, OLS/FE/GMM e exportação
