@@ -4,9 +4,10 @@ import matplotlib.pyplot as plt
 import io
 import base64
 from datetime import datetime
-from src.core.bootstrapping import LTN, NTNF, CurveBootstrap
-from src.core.daycounts import DayCounts
-from src.core.nss import NelsonSiegelSvensson
+from core.bootstrapping import LTN, NTNF, CurveBootstrap
+from core.daycounts import DayCounts
+from core.nss import NelsonSiegelSvensson
+
 
 def load_sovereign_data():
     path = "datos_y_modelos/Domestic/domestic_sovereign_curve_brazil.xlsx"
