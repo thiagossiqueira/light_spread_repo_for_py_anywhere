@@ -3,6 +3,12 @@ from routes.filters_routes import filters_blueprint
 import pandas as pd
 import os
 
+
+from utils.sovereign_curve import load_sovereign_data, generate_sovereign_surface_chart
+from datetime import datetime
+from flask import Markup
+
+
 app = Flask(__name__, template_folder="templates")
 app.register_blueprint(filters_blueprint)
 
@@ -107,10 +113,8 @@ def download(prefixo):
 def benchmark_summary():
     return render_template("benchmark_summary_table.html")
 
-from src.utils.sovereign_curve import load_sovereign_data, generate_sovereign_surface_chart
-from datetime import datetime
-from flask import Markup
 
+#check later
 @app.route("/sov_surface/<prefixo>")
 def sov_surface(prefixo):
     if prefixo != "di":
