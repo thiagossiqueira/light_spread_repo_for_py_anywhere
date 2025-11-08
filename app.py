@@ -107,6 +107,33 @@ def download(prefixo):
 def benchmark_summary():
     return render_template("benchmark_summary_table.html")
 
+from src.utils.sovereign_curve import load_sovereign_data, generate_sovereign_surface_chart
+from datetime import datetime
+from flask import Markup
+
+@app.route("/sov_surface/<prefixo>")
+def sov_surface(prefixo):
+    if prefixo != "di":
+        return "Only DI supported for now", 400
+
+    try:
+        ref_date = datetime(2025, 6, 19)
+        df = load_sovereign_data()
+        chart_base64 = generate_sovereign_surface_chart(df, ref_date)
+
+        html = f"""
+        <html>
+            <head><title>Curva Soberana DI</title></head>
+            <body style='text-align:center'>
+                <h2>Curva Zero-Cupom — Brasil (Soberana)</h2>
+                <img src="data:image/png;base64,{chart_base64}" alt="Sovereign DI Chart"/>
+            </body>
+        </html>
+        """
+        return html
+    except Exception as e:
+        return f"<p>Erro ao gerar gráfico: {e}</p>", 500
+
 
 if __name__ == "__main__":
     app.run(debug=True)
