@@ -2,6 +2,7 @@
 from src.utils.filters import filter_corporate_universe, anomaly_filtering_results
 from src.utils.file_io import (
     load_corp_bond_data,
+    load_govt_bond_data,
     load_yield_surface,
     load_di_surface,
     load_ipca_surface,
@@ -43,6 +44,7 @@ if __name__ == "__main__":
         },
     }
 
+    #corp for
     for tipo, params in universes.items():
         log_path = f"data/logs_{tipo}.txt"
         with open(log_path, "w", encoding="utf-8") as log_file:
@@ -183,3 +185,151 @@ if __name__ == "__main__":
     print("✅ benchmark_summary_table.html gerado com sucesso.")
 
 
+    # Replicate the code above, but for sovereign bonds now, ie, instead of using "universes", replace it by "govt_universes" and instead of using "corp_base_raw", replace it by "govt_base_raw"
+    # refactor later to make it more modular so you can reuse it for both corporate and sovereign bonds with one call
+
+    # Load sovereign bond base data
+    govt_base_raw = load_govt_bond_data(CONFIG["GOVT_PATH"])
+
+    # Define universes for sovereign bonds
+    govt_universes = {
+        "di": {
+            "yields_ts": load_yield_surface(CONFIG["GOVT_YA_PATH"]),
+            "surface": load_di_surface(CONFIG["HIST_CURVE_PATH"]),
+            "tenors": CONFIG["TENORS"],
+            "inflation_linked": "N",
+        },
+        "ipca": {
+            "yields_ts": load_yield_surface(CONFIG["GOVT_YA_PATH"]),
+            "surface": load_ipca_surface(CONFIG["WLA_CURVE_PATH"]),
+            "tenors": CONFIG["WLA_TENORS"],
+            "inflation_linked": "Y",
+        },
+    }
+
+    # Loop through each universe (DI and IPCA)
+    for tipo, params in govt_universes.items():
+        log_path = f"data/govt_logs_{tipo}.txt"
+        with open(log_path, "w", encoding="utf-8") as log_file:
+
+            def print_fn(*args, **kwargs):
+                print(*args, **kwargs)
+                print(*args, **kwargs, file=log_file)
+
+            print_fn(f"\n📊 Processando universo GOVT: {tipo.upper()}")
+
+            surface = params["surface"]
+            tenors = params["tenors"]
+            yields_ts = params["yields_ts"]
+            inflation_linked = params["inflation_linked"]
+
+            govt_base = govt_base_raw.copy()
+            govt_base = govt_base[govt_base["id"].isin(yields_ts.columns)]
+
+            govt_base = filter_government_universe(
+                govt_base,
+                inflation_linked=inflation_linked,
+                log=log_file
+            )
+
+            print_fn(f"🧮 Bonds disponíveis após filtro ({tipo}): {len(govt_base)}")
+
+            obs_windows = build_observation_windows(govt_base, yields_ts, CONFIG["OBS_WINDOW"])
+
+            yc_table = (
+                interpolate_di_surface(surface, tenors)
+                if tipo == "di"
+                else interpolate_surface(surface, tenors)
+            )
+
+            df_vis = yc_table[[k for k, _ in sorted(tenors.items(), key=lambda x: x[1]) if k in yc_table.columns]]
+            df_vis.index.name = "obs_date"
+
+            # Plot yield curve surface
+            surface_fig = plot_yield_curve_surface(
+                df_vis,
+                source_text=f"Source: {'DI' if tipo == 'di' else 'WLA'} B3 – cálculos próprios"
+            )
+            surface_fig.write_html(f"templates/govt_{tipo}_surface.html")
+
+            # Summary table
+            table_func = show_di_summary_table if tipo == "di" else show_ipca_summary_table
+            summary_fig = table_func(df_vis)
+
+            if summary_fig is not None:
+                title = "Sovereign Yield vs DI Interpolated Yield and Spread Summary" if tipo == "di" else "Sovereign Yield vs IPCA Interpolated Yield and Spread Summary"
+                path = f"templates/govt_{tipo.lower()}_summary_table.html"
+
+                summary_fig.update_layout(title_text=title)
+                summary_fig.write_html(path, include_plotlyjs="cdn", full_html=True)
+                print_fn(f"✅ govt_summary_{tipo.upper()}_table.html salvo com sucesso.")
+            else:
+                print_fn(f"⚠️ govt_summary_{tipo}_table.html não foi gerado.")
+
+            # Compute spreads
+            govt_bonds, skipped = compute_spreads(govt_base, yields_ts, yc_table, obs_windows, tenors)
+            print_fn(f"🧮 Spreads calculados ({tipo.upper()}): {len(govt_bonds)} | Ignorados: {len(skipped)}")
+
+            govt_bonds = anomaly_filtering_results(govt_bonds)
+            print_fn(f"🧼 Após remover anomalias: {len(govt_bonds)}")
+
+            # Export Excel
+            df_excel = govt_bonds[["id", "OBS_DATE", "YAS_BOND_YLD", "TENOR_YRS", "DI_YIELD", "SPREAD"]].copy()
+            df_excel.columns = ["Bond ID", "Obs Date", "Govt Yield (%)", "Tenor (yrs)", "DI Yield (%)", "Spread (bp)"]
+            df_excel.to_excel(f"data/govt_bonds_{tipo}_summary.xlsx", index=False)
+
+            # Spread surface
+            spread_surface = govt_bonds.pivot_table(
+                index="OBS_DATE",
+                columns="TENOR_BUCKET",
+                values="SPREAD",
+                aggfunc="mean"
+            ).sort_index()
+
+            tenor_order = sorted(tenors.items(), key=lambda x: x[1])
+            ordered_cols = [k for k, _ in tenor_order if k in spread_surface.columns]
+            spread_surface = spread_surface[ordered_cols]
+
+            fig = plot_surface_spread_with_bonds(
+                df_surface=spread_surface,
+                audit=govt_bonds,
+                title=f"Sovereign vs. {'DI' if tipo == 'di' else 'IPCA'} Spread Surface (Filtered Universe)",
+                zmin=-200,
+                zmax=2000,
+            )
+            fig.write_html(f"templates/govt_{tipo}_spread_surface.html")
+
+            # Summary table
+            table_fig = show_summary_table(govt_bonds)
+            if table_fig is not None:
+                table_fig.write_html(f"templates/govt_summary_{tipo.upper()}_table.html")
+
+            # Export ignored observations
+            pd.DataFrame(skipped, columns=["Bond ID", "Obs Date", "Reason"]).to_csv(
+                f"data/govt_skipped_{tipo}_yields.csv", index=False
+            )
+
+    # Final benchmark merge
+    df_di = pd.read_excel("data/govt_bonds_di_summary.xlsx")[["Bond ID"]].copy()
+    df_ipca = pd.read_excel("data/govt_bonds_ipca_summary.xlsx")[["Bond ID"]].copy()
+
+    df_di["Benchmark"] = "DI"
+    df_ipca["Benchmark"] = "IPCA"
+
+    df = pd.concat([df_di, df_ipca], axis=0).drop_duplicates()
+
+    cols = ["id", "ISSUER", "COUNTRY", "CREDIT_RATING", "MATURITY", "COUPON"]
+    govt_data = load_govt_bond_data(CONFIG["GOVT_PATH"])[cols].copy()
+
+    df = df.merge(govt_data, left_on="Bond ID", right_on="id", how="left").drop(columns="id")
+
+    df_excel = df[["Bond ID", "Benchmark", "ISSUER", "COUNTRY", "CREDIT_RATING", "MATURITY", "COUPON"]].copy()
+    df_excel.columns = ["Bond ID", "Benchmark", "Issuer", "Country", "Credit Rating", "Maturity", "Coupon (%)"]
+
+    df_excel.to_excel("data/govt_benchmark_summary_table.xlsx", index=False)
+
+    html_output = show_benchmark_table(df_excel)
+    with open("templates/govt_benchmark_summary_table.html", "w", encoding="utf-8") as f:
+        f.write(html_output)
+
+    print("✅ govt_benchmark_summary_table.html gerado com sucesso.")

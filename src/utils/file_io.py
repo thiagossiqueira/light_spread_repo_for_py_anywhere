@@ -18,6 +18,12 @@ def load_corp_bond_data(path):
     df = df.drop_duplicates(subset=["id"])
     return df
 
+def load_govt_bond_data(path):
+    df = pd.read_excel(path, sheet_name="db_values_only")
+    df["id"] = df["id"].astype(str).str.strip()
+    df = df.drop_duplicates(subset=["id"])
+    return df
+
 def load_di_surface(path):
     curve_df = pd.read_excel(path, sheet_name="only_values")
     curve_df["Curve date"] = pd.to_datetime(curve_df["Curve date"])

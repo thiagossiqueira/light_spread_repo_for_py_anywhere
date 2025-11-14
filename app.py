@@ -115,28 +115,43 @@ def benchmark_summary():
 
 
 #check later
+# 3D Surface Chart (already done for DI, do for IPCA too)
 @app.route("/sov_surface/<prefixo>")
 def sov_surface(prefixo):
-    if prefixo != "di":
-        return "Only DI supported for now", 400
+    if prefixo not in ["di", "ipca"]:
+        prefixo = "di"
+    return send_file(f"templates/govt_{prefixo}_surface.html")
 
-    try:
-        ref_date = datetime(2025, 6, 19)
-        df = load_sovereign_data()
-        chart_base64 = generate_sovereign_surface_chart(df, ref_date)
+# Spread Charts (3D spread charts)
+@app.route("/sov_spread/<prefixo>")
+def sov_spread(prefixo):
+    if prefixo not in ["di", "ipca"]:
+        prefixo = "di"
+    return send_file(f"templates/govt_{prefixo}_spread_surface.html")
 
-        html = f"""
-        <html>
-            <head><title>Curva Soberana DI</title></head>
-            <body style='text-align:center'>
-                <h2>Curva Zero-Cupom — Brasil (Soberana)</h2>
-                <img src="data:image/png;base64,{chart_base64}" alt="Sovereign DI Chart"/>
-            </body>
-        </html>
-        """
-        return html
-    except Exception as e:
-        return f"<p>Erro ao gerar gráfico: {e}</p>", 500
+# Spread Tables (HTML)
+@app.route("/sov-spread-table/<prefixo>")
+def sov_spread_table(prefixo):
+    if prefixo not in ["di", "ipca"]:
+        prefixo = "di"
+    return send_file(f"templates/govt_summary_{prefixo.upper()}_table.html")
+
+# Table Downloads (XLSX)
+@app.route("/sov-download/<prefixo>")
+def sov_download(prefixo):
+    if prefixo not in ["di", "ipca"]:
+        return "Tipo inválido", 400
+    return send_file(
+        f"data/govt_bonds_{prefixo}_summary.xlsx",
+        download_name=f"govt_bonds_{prefixo}_summary.xlsx",
+        as_attachment=True,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+# Final benchmark summary
+@app.route("/sov-benchmark-summary")
+def sov_benchmark_summary():
+    return render_template("govt_benchmark_summary_table.html")
 
 
 if __name__ == "__main__":

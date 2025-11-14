@@ -21,32 +21,72 @@ spread-model/
 │
 ├── src/                         # Código fuente modular (instalado vía setup)
 │   ├── calendars/               # Cálculo de fechas hábiles
+│   │   ├── holidays
+│   │   │   ├── brazil
+│   │   │   ├── libor
+│   │   │   ├── us
+│   │   │   ├── utils
+│   │   │   └── factory.py
+│   │   ├── custom_date_types.py
+│   │   └── daycounts.py
 │   ├── finmath/                 # Funciones financieras
+│   │   ├── brazilian_bonds
+│   │   │   └── corporate_bonds.py
+│   │   ├── SwapCurve
+│   │   │   ├── Holidays
+│   │   │   └── SwapCurve.py
+│   │   └── termstructure
+│   │       └── curve_models.py
 │   ├── utils/                   # I/O, interpolación, gráficos
+│   │   ├── file_io.py
+│   │   ├── filters.py
+│   │   ├── interpolation.py
+│   │   ├── plotting.py         # where we set the charts type/formatting
+│   │   └── sovereign_curve.py
 │   ├── config.py                # Parámetros globales y rutas
 │   └── core/                    # Cálculo de ventanas y spreads
+│       ├── spread_calculator.py
+│       └── windowing.py
 │
 │
 ├── datos_y_modelos/            # Archivos de datos (no incluidos si son privados)
 │   ├── db/                     # Base de datos histórica de curvas DI y precios de bonos
-│   │   ├── ODA_Comdty.xlsx
-│   │   ├── bsrch.xlsx
-│   │   └── ya.xlsx             # Yields de bonos corporativos
+│   │   ├── brazil_domestic_corp_bonds
+│   │   ├── brazil_macroeconomic_data
+│   │   ├── id_x_ipca_spread_futures
+│   │   ├── one-day_interbank_deposit_futures_contract_di
+│   │   ├── output_calculated_spreads
+│   │   └── output_vecm_data
+│   ├── scripts/
+│   │   └── painel_spreads_model.do
 │   └── Domestic/
-│       └── brazil_domestic_corp_db.xlsx     # Metadata de bonos corporativos brasileños
+│       ├── domestic_sovereign_curve_brazil.xlsx
+│       └── universo_brazil_deb_des.xlsx     # Metadata de bonos corporativos brasileños
 │
 ├── static/            # Visualizaciones exportadas en HTML
-│   ├── css/                     
-│   │   ├── style.css  # para o layout global
+│   ├── css/                   
+│   │   ├── main.css
+│   │   ├── style.css
+│   │   ├── summary.css  
+│   │   └── tables.css 
 │   ├── js/                     
 │   │   ├── datatableFilter.js
+│   │   ├── filter_controls.js
+│   │   ├── spread_table.js
 │   │   └── exportTable.js
-
+│   ├── spread_surface.html
+│   └── summary_table.html
 ├── templates/                   # Plantillas HTML para la app Flask
+│   ├── shared
+│   │   ├── base.html
+│   │   └── nav_bar.html         # where I manage links from the landing page 
 │   ├── filters.html
-│   ├── base.html
 │   ├── index.html
+│   ├── ipca_summary_full.html
+│   ├── ipca_summary_iframe.html
+│   ├── spread_embed.html
 │   ├── spread_iframe.html
+│   ├── summary_ful.html
 │   └── summary_iframe.html
 │
 ├── .github                      # Configuración de integración continua (CI)
@@ -85,6 +125,24 @@ pip install flask
 ---
 
 ### Ejecución
+#### Production: Para generar los datos y los gráficos HTML:
+```bash
+run https://www.pythonanywhere.com/user/tsiqueira4/consoles/41338075/
+17:20 ~ $ ls
+README.txt  light_spread_repo_for_py_anywhere
+17:20 ~ $ cd light_spread_repo_for_py_anywhere/
+17:20 ~ $ ls
+README.txt  light_spread_repo_for_py_anywhere
+17:20 ~ $ cd light_spread_repo_for_py_anywhere/
+17:21 ~/light_spread_repo_for_py_anywhere (master)$ ls
+Makefile   __pycache__  data             main.py       pyproject.toml    routes           src     templates  wsgi.py
+README.md  app.py       datos_y_modelos  post-pull.sh  requirements.txt  sparse-checkout  static  tests
+17:21 ~/light_spread_repo_for_py_anywhere (master)$ ./post-pull.sh 
+```
+
+Esto generará los archivos:
+- `static/spread_surface.html`
+- `static/summary_table.html`
 
 #### Para generar los datos y los gráficos HTML:
 ```bash
