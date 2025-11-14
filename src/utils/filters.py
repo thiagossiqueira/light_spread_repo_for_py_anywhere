@@ -53,6 +53,41 @@ def filter_corporate_universe(df: pd.DataFrame, inflation_linked: str = "N", log
 
     return df
 
+def filter_government_universe(df: pd.DataFrame, inflation_linked: str = "N", log=None) -> pd.DataFrame:
+    """
+    Filtra o universo de bonds soberanos:
+    - Remove dados inconsistentes
+    - Foco em títulos com cupons fixos e BRL
+    """
+    print_fn = (
+        (lambda *args, **kwargs: __builtins__.print(*args, **kwargs))
+        if log is None else
+        (lambda *args, **kwargs: __builtins__.print(*args, file=log, **kwargs))
+    )
+
+    df = df.copy()
+    print_fn(f"🔍 Inicial: {len(df)} linhas")
+
+    df = df[df['CPN_TYP'].isin(['FIXED'])]
+    print_fn(f"➡ Após filtrar CPN_TYP='FIXED': {len(df)}")
+
+    df = df[df['CRNCY'].isin(['BRL'])]
+    print_fn(f"➡ Após filtrar CRNCY='BRL': {len(df)}")
+
+    df["INFLATION_LINKED_INDICATOR"] = (
+        df["INFLATION_LINKED_INDICATOR"]
+        .astype(str)
+        .str.strip()
+        .str.upper()
+    )
+    print_fn("🧪 Valores únicos normalizados em INFLATION_LINKED_INDICATOR:",
+             df["INFLATION_LINKED_INDICATOR"].unique())
+
+    df = df[df["INFLATION_LINKED_INDICATOR"] == inflation_linked.strip().upper()]
+    print_fn(f"➡ Após filtrar INFLATION_LINKED_INDICATOR={inflation_linked}: {len(df)}")
+
+    df["MATURITY"] = pd.to_datetime(df["MATURITY"], errors='coerce')
+    return df
 
 def anomaly_filtering_results(df: pd.DataFrame) -> pd.DataFrame:
     """
