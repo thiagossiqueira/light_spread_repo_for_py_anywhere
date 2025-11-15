@@ -54,15 +54,10 @@ def filter_corporate_universe(df: pd.DataFrame, inflation_linked: str = "N", log
     return df
 
 def filter_government_universe(df: pd.DataFrame, inflation_linked: str = "N", log=None) -> pd.DataFrame:
-    """
-    Filtra o universo de bonds soberanos:
-    - Remove dados inconsistentes
-    - Foco em títulos com cupons fixos e BRL
-    """
     print_fn = (
-        (lambda *args, **kwargs: __builtins__.print(*args, **kwargs))
+        (lambda *args, **kwargs: print(*args, **kwargs))
         if log is None else
-        (lambda *args, **kwargs: __builtins__.print(*args, file=log, **kwargs))
+        (lambda *args, **kwargs: print(*args, **kwargs, file=log))
     )
 
     df = df.copy()
