@@ -4,7 +4,6 @@ import pandas as pd
 import os
 
 
-from utils.sovereign_curve import load_sovereign_data, generate_sovereign_surface_chart
 from datetime import datetime
 from flask import Markup
 
