@@ -322,13 +322,13 @@ if __name__ == "__main__":
 
     df = pd.concat([df_di, df_ipca], axis=0).drop_duplicates()
 
-    cols = ["id", "ISSUER", "COUNTRY", "CREDIT_RATING", "MATURITY", "COUPON"]
+    cols = ["id", "ISSUER", "MATURITY"]
     govt_data = load_govt_bond_data(CONFIG["GOVT_PATH"])[cols].copy()
 
     df = df.merge(govt_data, left_on="Bond ID", right_on="id", how="left").drop(columns="id")
 
-    df_excel = df[["Bond ID", "Benchmark", "ISSUER", "COUNTRY", "CREDIT_RATING", "MATURITY", "COUPON"]].copy()
-    df_excel.columns = ["Bond ID", "Benchmark", "Issuer", "Country", "Credit Rating", "Maturity", "Coupon (%)"]
+    df_excel = df[["Bond ID", "Benchmark", "ISSUER", "MATURITY"]].copy()
+    df_excel.columns = ["Bond ID", "Benchmark", "Issuer", "Maturity"]
 
     df_excel.to_excel("data/govt_benchmark_summary_table.xlsx", index=False)
 
