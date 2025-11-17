@@ -5,7 +5,7 @@ import os
 
 
 from datetime import datetime
-from flask import Markup
+from markupsafe import Markup
 
 
 app = Flask(__name__, template_folder="templates")
