@@ -41,8 +41,7 @@ spread-model/
 │   │   ├── file_io.py
 │   │   ├── filters.py
 │   │   ├── interpolation.py
-│   │   ├── plotting.py         # where we set the charts type/formatting
-│   │   └── sovereign_curve.py
+│   │   └── plotting.py
 │   ├── config.py                # Parámetros globales y rutas
 │   └── core/                    # Cálculo de ventanas y spreads
 │       ├── spread_calculator.py

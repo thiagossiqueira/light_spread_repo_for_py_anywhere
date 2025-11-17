@@ -120,3 +120,35 @@ def load_raw_corp_data() -> pd.DataFrame:
     df = pd.read_excel(CONFIG["CORP_PATH"], sheet_name="db_values_only")
     df["id"] = df["id"].astype(str).str.strip()
     return df
+
+
+
+
+def load_raw_govt_data() -> pd.DataFrame:
+    """
+    Carrega a base de dados de bonds soberanos (governo) sem aplicar filtros.
+
+    Retorna
+    -------
+    pd.DataFrame
+        DataFrame com os dados brutos de títulos soberanos.
+    """
+    path = CONFIG["GOVT_PATH"]
+
+    try:
+        df = pd.read_excel(path, sheet_name="db_values_only")
+    except FileNotFoundError:
+        raise FileNotFoundError(f"❌ Arquivo GOVT_PATH não encontrado: {path}")
+    except Exception as e:
+        raise RuntimeError(f"❌ Erro ao carregar GOVT_PATH ({path}): {e}")
+
+    # Limpeza básica
+    if "id" in df.columns:
+        df["id"] = df["id"].astype(str).str.strip()
+    else:
+        raise KeyError("A coluna 'id' não foi encontrada na planilha GOVT_PATH.")
+
+    return df
+
+
+
