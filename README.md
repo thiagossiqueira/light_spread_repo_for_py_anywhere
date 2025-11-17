@@ -136,6 +136,7 @@ README.txt  light_spread_repo_for_py_anywhere
 17:21 ~/light_spread_repo_for_py_anywhere (master)$ ls
 Makefile   __pycache__  data             main.py       pyproject.toml    routes           src     templates  wsgi.py
 README.md  app.py       datos_y_modelos  post-pull.sh  requirements.txt  sparse-checkout  static  tests
+17:21 ~/light_spread_repo_for_py_anywhere (master) $ chmod +x post-pull.sh 
 17:21 ~/light_spread_repo_for_py_anywhere (master)$ ./post-pull.sh 
 ```
 
