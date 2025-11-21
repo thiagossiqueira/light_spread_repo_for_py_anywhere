@@ -77,9 +77,10 @@ def build_and_save_synthetic_cds_surface(
     audit = df[["id", "OBS_DATE", "TENOR_BUCKET", "SPREAD_BP"]].copy()
     audit.rename(columns={"SPREAD_BP": "SPREAD"}, inplace=True)
 
-    # adiciona CPN_TYP vazio se não existir
-    if "CPN_TYP" not in audit.columns:
-        audit["CPN_TYP"] = ""
+    # adiciona colunas opcionais vazias (para compatibilidade com plotting)
+    for col in ["CPN_TYP", "CPN"]:
+        if col not in audit.columns:
+            audit[col] = ""
 
     # --------- superfície: média do spread por data x bucket
     surface = (
