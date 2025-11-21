@@ -117,16 +117,10 @@ def load_raw_corp_data() -> pd.DataFrame:
     return df
 
 
-
-
 def load_raw_govt_data() -> pd.DataFrame:
     """
-    Carrega a base de dados de bonds soberanos (governo) sem aplicar filtros.
-
-    Retorna
-    -------
-    pd.DataFrame
-        DataFrame com os dados brutos de títulos soberanos.
+    Carrega a base de dados de bonds soberanos (governo) e cria a coluna SECURITY_TYP
+    a partir de CALC_TYP_DES, mapeando tipos padrão (LTN, LFT, NTNF, NTNB).
     """
     path = CONFIG["GOVT_PATH"]
 
@@ -137,13 +131,31 @@ def load_raw_govt_data() -> pd.DataFrame:
     except Exception as e:
         raise RuntimeError(f"❌ Erro ao carregar GOVT_PATH ({path}): {e}")
 
-    # Limpeza básica
-    if "id" in df.columns:
-        df["id"] = df["id"].astype(str).str.strip()
-    else:
+    if "id" not in df.columns:
         raise KeyError("A coluna 'id' não foi encontrada na planilha GOVT_PATH.")
+    df["id"] = df["id"].astype(str).str.strip()
+
+    # ===========================
+    # 🔧 Mapeamento CALC_TYP_DES → SECURITY_TYP
+    # ===========================
+    if "CALC_TYP_DES" in df.columns:
+        df["CALC_TYP_DES"] = df["CALC_TYP_DES"].astype(str).str.upper().str.strip()
+
+        mapping = {
+            "BRAZIL: BBCS/LTNS": "LTN",
+            "BRAZIL BBCS/LTNS": "LTN",
+            "BRAZIL LFT ANN-OVR": "LFT",
+            "BRAZIL FIXED CPN": "NTNF",
+            "BRAZIL I/L BOND": "NTNB",
+        }
+
+        df["SECURITY_TYP"] = df["CALC_TYP_DES"].map(mapping)
+    else:
+        print("⚠️ Coluna CALC_TYP_DES não encontrada em GOVT_PATH — SECURITY_TYP não será gerado.")
+        df["SECURITY_TYP"] = None
 
     return df
+
 
 
 
