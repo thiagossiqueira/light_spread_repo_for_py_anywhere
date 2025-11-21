@@ -32,9 +32,9 @@ cash_flows = [
 ]
 
 
-# Ajustar modelo NSS
+# Ajustar modelo NSS (estima betas automaticamente)
 nss = NelsonSiegelSvensson(prices=prices, cash_flows=cash_flows, ref_date=ref_date)
-nss.fit_curve(tenor_values, spreads)
+
 
 
 
