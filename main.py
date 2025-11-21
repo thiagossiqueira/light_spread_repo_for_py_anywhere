@@ -163,31 +163,6 @@ if __name__ == "__main__":
             )
 
     # ============================================================
-    # Merge de benchmarks corporativos
-    # ============================================================
-    df_di = pd.read_excel("data/corp_bonds_di_summary.xlsx")[["Bond ID"]].copy()
-    df_ipca = pd.read_excel("data/corp_bonds_ipca_summary.xlsx")[["Bond ID"]].copy()
-
-    df_di["Benchmark"] = "DI"
-    df_ipca["Benchmark"] = "IPCA"
-    df = pd.concat([df_di, df_ipca], axis=0).drop_duplicates()
-
-    cols = ["id", "ISSUER", "ULT_PARENT_TICKER_EXCHANGE", "industry_group", "TOT_DEBT_TO_EBITDA", "CIE DES BULK"]
-    corp_data = load_corp_bond_data(CONFIG["CORP_PATH"])[cols].copy()
-    df = df.merge(corp_data, left_on="Bond ID", right_on="id", how="left").drop(columns="id")
-
-    df_excel = df[
-        ["Bond ID", "Benchmark", "ISSUER", "ULT_PARENT_TICKER_EXCHANGE", "industry_group", "TOT_DEBT_TO_EBITDA", "CIE DES BULK"]
-    ].copy()
-    df_excel.columns = ["Bond ID", "Benchmark", "Emisor", "Código de Bolsa", "Setor", "Deuda/EBITDA", "Descripciones"]
-
-    df_excel.to_excel("data/benchmark_summary_table.xlsx", index=False)
-    html_output = show_benchmark_table(df_excel)
-    with open("templates/benchmark_summary_table.html", "w", encoding="utf-8") as f:
-        f.write(html_output)
-    print("✅ benchmark_summary_table.html gerado com sucesso.")
-
-    # ============================================================
     # GOVERNMENT BONDS
     # ============================================================
     govt_base_raw = load_govt_bond_data(CONFIG["GOVT_PATH"])
@@ -254,11 +229,6 @@ if __name__ == "__main__":
                     print_fn("⚠️ Nenhum bond LTN encontrado após o filtro.")
                     continue
 
-                print_fn("⚙️ Calculando spreads diretos para LTNs (zero-coupon, sem bootstrapping)...")
-
-                yc_table = interpolate_di_surface(surface, tenors)
-
-                # Monta base expandida com yields históricos
                 govt_bonds_list = []
                 for bond_id in govt_base["id"].unique():
                     if bond_id not in yields_ts.columns:
@@ -269,12 +239,7 @@ if __name__ == "__main__":
                         "OBS_DATE": yields_ts.index,
                         "YAS_BOND_YLD": yields_ts[bond_id],
                     })
-                    # Junta metadados do título (maturity, etc.)
-                    subset = subset.merge(
-                        govt_base[["id", "MATURITY"]],
-                        on="id",
-                        how="left"
-                    )
+                    subset = subset.merge(govt_base[["id", "MATURITY"]], on="id", how="left")
                     govt_bonds_list.append(subset)
 
                 if not govt_bonds_list:
@@ -282,8 +247,6 @@ if __name__ == "__main__":
                     continue
 
                 govt_bonds_expanded = pd.concat(govt_bonds_list, ignore_index=True)
-
-                # Agora chamamos o cálculo com a base expandida
                 govt_bonds = compute_spreads_ltn(govt_bonds_expanded, yc_table)
 
                 govt_bonds = anomaly_filtering_results(govt_bonds)
@@ -296,7 +259,7 @@ if __name__ == "__main__":
                 df_excel.to_excel("data/govt_bonds_ltn_summary.xlsx", index=False)
 
                 print_fn("✅ LTNs processadas com sucesso (sem bootstrapping).")
-                continue  # pula o restante do loop
+                continue
 
             # NTNF / NTNB – fluxo normal
             obs_windows = build_observation_windows(govt_base, yields_ts, CONFIG["OBS_WINDOW"])
@@ -334,7 +297,6 @@ if __name__ == "__main__":
             else:
                 print_fn(f"⚠️ govt_summary_{tipo}_table.html não foi gerado.")
 
-            # Cálculo dos spreads para NTNF/NTNB
             govt_bonds, skipped = compute_spreads(govt_base, yields_ts, yc_table, obs_windows, tenors)
             print_fn(f"🧮 Spreads calculados ({tipo.upper()}): {len(govt_bonds)} | Ignorados: {len(skipped)}")
 
@@ -373,26 +335,53 @@ if __name__ == "__main__":
             )
 
     # ============================================================
-    # MERGE FINAL DE BENCHMARKS GOVERNAMENTAIS
+    # MERGE FINAL DE BENCHMARKS GOVERNAMENTAIS + CONSOLIDADO
     # ============================================================
-    df_di = pd.read_excel("data/govt_bonds_di_summary.xlsx")[["Bond ID"]].copy()
-    df_ipca = pd.read_excel("data/govt_bonds_ipca_summary.xlsx")[["Bond ID"]].copy()
-    df_ltn = pd.read_excel("data/govt_bonds_ltn_summary.xlsx")[["Bond ID"]].copy()
+    import os
 
-    df_di["Benchmark"] = "DI"
-    df_ipca["Benchmark"] = "IPCA"
-    df_ltn["Benchmark"] = "LTN"
-    df = pd.concat([df_di, df_ipca, df_ltn], axis=0).drop_duplicates()
+    df_di = pd.read_excel("data/govt_bonds_di_summary.xlsx")[["Bond ID", "OBS_DATE", "YAS_BOND_YLD", "TENOR_YRS", "DI_YIELD", "SPREAD"]].copy()
+    df_ipca = pd.read_excel("data/govt_bonds_ipca_summary.xlsx")[["Bond ID", "OBS_DATE", "YAS_BOND_YLD", "TENOR_YRS", "DI_YIELD", "SPREAD"]].copy()
+
+    if os.path.exists("data/govt_bonds_ltn_summary.xlsx"):
+        df_ltn = pd.read_excel("data/govt_bonds_ltn_summary.xlsx")[["Bond ID", "OBS_DATE", "YAS_BOND_YLD", "TENOR_YRS", "DI_YIELD", "SPREAD"]].copy()
+        df_ltn["TYPE"] = "LTN"
+    else:
+        print("⚠️ Nenhum arquivo govt_bonds_ltn_summary.xlsx encontrado.")
+        df_ltn = pd.DataFrame(columns=["Bond ID", "OBS_DATE", "YAS_BOND_YLD", "TENOR_YRS", "DI_YIELD", "SPREAD", "TYPE"])
+
+    df_di["TYPE"] = "NTNF"
+    df_ipca["TYPE"] = "NTNB"
+
+    govt_all = pd.concat([df_ltn, df_di, df_ipca], axis=0, ignore_index=True)
+    govt_all = govt_all.drop_duplicates(subset=["Bond ID", "OBS_DATE"])
+
+    govt_all.rename(columns={
+        "OBS_DATE": "Obs Date",
+        "YAS_BOND_YLD": "Govt Yield (%)",
+        "TENOR_YRS": "Tenor (yrs)",
+        "DI_YIELD": "DI Yield (%)",
+        "SPREAD": "Spread (bp)"
+    }, inplace=True)
 
     cols = ["id", "ISSUER", "MATURITY"]
     govt_data = load_govt_bond_data(CONFIG["GOVT_PATH"])[cols].copy()
-    df = df.merge(govt_data, left_on="Bond ID", right_on="id", how="left").drop(columns="id")
+    govt_all = govt_all.merge(govt_data, left_on="Bond ID", right_on="id", how="left").drop(columns="id")
+    govt_all["Issuer"] = govt_all["ISSUER"]
+    govt_all["Maturity"] = govt_all["MATURITY"]
+    govt_all.drop(columns=["ISSUER", "MATURITY"], inplace=True)
 
-    df_excel = df[["Bond ID", "Benchmark", "ISSUER", "MATURITY"]].copy()
-    df_excel.columns = ["Bond ID", "Benchmark", "Issuer", "Maturity"]
+    govt_all = govt_all[["TYPE", "Bond ID", "Obs Date", "Govt Yield (%)", "Tenor (yrs)", "DI Yield (%)", "Spread (bp)", "Issuer", "Maturity"]]
+    govt_all.sort_values(by=["TYPE", "Obs Date"], inplace=True)
 
-    df_excel.to_excel("data/govt_benchmark_summary_table.xlsx", index=False)
-    html_output = show_benchmark_table(df_excel)
+    govt_all.to_excel("data/govt_bonds_all_consolidated.xlsx", index=False)
+    print(f"✅ govt_bonds_all_consolidated.xlsx gerado com {len(govt_all)} linhas.")
+
+    benchmarks = govt_all[["Bond ID", "TYPE", "Issuer", "Maturity"]].drop_duplicates()
+    benchmarks.rename(columns={"TYPE": "Benchmark"}, inplace=True)
+    benchmarks.to_excel("data/govt_benchmark_summary_table.xlsx", index=False)
+
+    html_output = show_benchmark_table(benchmarks)
     with open("templates/govt_benchmark_summary_table.html", "w", encoding="utf-8") as f:
         f.write(html_output)
-    print("✅ govt_benchmark_summary_table.html gerado com sucesso.")
+
+    print(f"✅ govt_benchmark_summary_table.html gerado com sucesso (total: {len(benchmarks)} títulos).")
