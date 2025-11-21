@@ -116,7 +116,18 @@ def load_raw_corp_data() -> pd.DataFrame:
     df["id"] = df["id"].astype(str).str.strip()
     return df
 
-def filter_government_universe(df: pd.DataFrame, inflation_linked: str = "N", bond_type: str = None, log=None) -> pd.DataFrame:
+def filter_government_universe(
+    df: pd.DataFrame,
+    inflation_linked: str = "N",
+    bond_type: str = None,
+    log=None
+) -> pd.DataFrame:
+    """
+    Filtro de universo para títulos soberanos (govt).
+
+    - LTNs: zero-coupon, sem restrição por CRNCY nem FIXED.
+    - NTNF/NTNB: mantém cupom fixo e BRL.
+    """
     print_fn = (
         (lambda *args, **kwargs: print(*args, **kwargs))
         if log is None else
@@ -126,27 +137,51 @@ def filter_government_universe(df: pd.DataFrame, inflation_linked: str = "N", bo
     df = df.copy()
     print_fn(f"🔍 Inicial: {len(df)} linhas")
 
-    # Filtros básicos
-    df = df[df["CPN_TYP"].astype(str).str.upper() == "FIXED"]
-    df = df[df["CRNCY"].astype(str).str.upper() == "BRL"]
-    print_fn(f"➡ Após CPN_TYP='FIXED' e CRNCY='BRL': {len(df)}")
+    bond_type = (bond_type or "").upper()
 
-    df["INFLATION_LINKED_INDICATOR"] = df["INFLATION_LINKED_INDICATOR"].astype(str).str.strip().str.upper()
-    print_fn("🧪 Valores únicos em INFLATION_LINKED_INDICATOR:", df["INFLATION_LINKED_INDICATOR"].unique())
+    # =======================================================
+    # 🎯 Filtro específico por tipo de bond
+    # =======================================================
+    if bond_type == "LTN":
+        # Zero-coupon: CPN_TYP deve indicar ausência de cupom
+        zero_like = ["ZERO", "DISCOUNT", "ZC", "NONE", "N/A", "NAN", ""]
+        df["CPN_TYP"] = df["CPN_TYP"].astype(str).str.upper().str.strip()
+        df = df[df["CPN_TYP"].isin(zero_like)]
 
-    df = df[df["INFLATION_LINKED_INDICATOR"] == inflation_linked.strip().upper()]
-    print_fn(f"➡ Após filtrar INFLATION_LINKED_INDICATOR={inflation_linked}: {len(df)}")
+        # Opcional: confirmar se SECURITY_TYP está coerente
+        if "SECURITY_TYP" in df.columns:
+            df = df[df["SECURITY_TYP"].astype(str).str.upper().eq("LTN")]
 
-    # Filtro por tipo de título, se informado
-    if bond_type and "SECURITY_TYP" in df.columns:
-        df = df[df["SECURITY_TYP"].astype(str).str.upper() == bond_type.upper()]
-        print_fn(f"➡ Após filtrar SECURITY_TYP={bond_type}: {len(df)}")
+        print_fn(f"➡ Após filtrar ZERO-COUPON (LTN): {len(df)}")
 
-    df["MATURITY"] = pd.to_datetime(df["MATURITY"], errors="coerce")
+    else:
+        # NTN-F e NTN-B → fixos, BRL
+        df = df[df["CPN_TYP"].astype(str).str.upper().eq("FIXED")]
+        df = df[df["CRNCY"].astype(str).str.upper().eq("BRL")]
+        print_fn(f"➡ Após CPN_TYP='FIXED' & CRNCY='BRL': {len(df)}")
+
+    # =======================================================
+    # 💨 Filtro por indexação à inflação
+    # =======================================================
+    if "INFLATION_LINKED_INDICATOR" in df.columns:
+        df["INFLATION_LINKED_INDICATOR"] = (
+            df["INFLATION_LINKED_INDICATOR"].astype(str).str.strip().str.upper()
+        )
+        df = df[df["INFLATION_LINKED_INDICATOR"] == inflation_linked.strip().upper()]
+        print_fn(f"➡ Após INFLATION_LINKED_INDICATOR={inflation_linked}: {len(df)}")
+
+    # =======================================================
+    # 📈 Filtro por SECURITY_TYP (se existir)
+    # =======================================================
+    if "SECURITY_TYP" in df.columns and bond_type:
+        df["SECURITY_TYP"] = df["SECURITY_TYP"].astype(str).str.upper().str.strip()
+        df = df[df["SECURITY_TYP"] == bond_type]
+        print_fn(f"➡ Após SECURITY_TYP={bond_type}: {len(df)}")
+
+    # =======================================================
+    # 🗓️ Ajuste de datas
+    # =======================================================
+    if "MATURITY" in df.columns:
+        df["MATURITY"] = pd.to_datetime(df["MATURITY"], errors="coerce")
 
     return df
-
-
-
-
-
