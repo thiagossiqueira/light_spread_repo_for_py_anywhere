@@ -78,14 +78,40 @@ def filter_government_universe(df: pd.DataFrame, inflation_linked: str = "N", bo
     df["MATURITY"] = pd.to_datetime(df["MATURITY"], errors="coerce")
     return df
 
-
 def anomaly_filtering_results(df: pd.DataFrame) -> pd.DataFrame:
     """
     Aplica filtros para eliminar observações com yields zerados ou spreads anômalos.
+    Inclui prints de diagnóstico mostrando o impacto de cada regra.
     """
+
+    if df is None or df.empty:
+        print("⚠️ [ANOMALY FILTER] DataFrame vazio — nada a filtrar.")
+        return df
+
     df = df.copy()
+
+    # Diagnóstico inicial
+    total_inicial = len(df)
+    print(f"\n📊 [ANOMALY FILTER] Início: {total_inicial} observações")
+
+    # Remover yields zerados
+    df_yield_zero = df[df["YAS_BOND_YLD"] == 0]
+    if not df_yield_zero.empty:
+        print(f"➡️ Removendo {len(df_yield_zero)} registros com YAS_BOND_YLD = 0")
     df = df[df["YAS_BOND_YLD"] != 0]
-    df = df[(df["SPREAD"] >= -10) & (df["SPREAD"] <= 10)]
+
+    # Filtro de spreads anômalos (em basis points, ±1000 bps = ±10 p.p.)
+    total_pre_spread = len(df)
+    mask_valid = (df["SPREAD"] >= -1000) & (df["SPREAD"] <= 1000)
+    removidos_spread = total_pre_spread - mask_valid.sum()
+
+    print(f"➡️ Removendo {removidos_spread} registros com SPREAD fora de [-1000, 1000] bps")
+    df = df[mask_valid]
+
+    # Resultado final
+    total_final = len(df)
+    print(f"✅ [ANOMALY FILTER] Final: {total_final} observações válidas (de {total_inicial} iniciais)\n")
+
     return df
 
 
