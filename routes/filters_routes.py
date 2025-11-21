@@ -1,7 +1,10 @@
 # routes/filters_routes.py
 from flask import Blueprint, render_template, request
 import pandas as pd
-from src.utils.filters import apply_custom_filters, load_raw_corp_data, load_raw_govt_data
+
+from src.utils.filters import apply_custom_filters
+from src.utils.file_io import load_raw_corp_data, load_govt_bond_data
+
 
 filters_blueprint = Blueprint("filters", __name__)
 
