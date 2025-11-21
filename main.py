@@ -94,9 +94,9 @@ if __name__ == "__main__":
             print_fn(f"🧼 Após remover anomalias: {len(corp_bonds)}")
 
             df_excel = corp_bonds[
-                ["id", "OBS_DATE", "YAS_BOND_YLD", "TENOR_YRS", "DI_YIELD", "SPREAD"]
+                ["id", "OBS_DATE", "YAS_BOND_YLD", "DI_YIELD", "SPREAD"]
             ].copy()
-            df_excel.columns = ["Bond ID", "Obs Date", "Corp Yield (%)", "Tenor (yrs)", "DI Yield (%)", "Spread (bp)"]
+            df_excel.columns = ["Bond ID", "Obs Date", "Corp Yield (%)", "DI Yield (%)", "Spread (bp)"]
             df_excel.to_excel(f"data/corp_bonds_{tipo}_summary.xlsx", index=False)
 
     # ============================================================
@@ -184,9 +184,9 @@ if __name__ == "__main__":
                 print_fn(f"🧼 Após remover anomalias (LTN): {len(govt_bonds)}")
 
                 df_excel = govt_bonds[
-                    ["id", "OBS_DATE", "YAS_BOND_YLD", "TENOR_YRS", "DI_YIELD", "SPREAD"]
+                    ["id", "OBS_DATE", "YAS_BOND_YLD", "DI_YIELD", "SPREAD"]
                 ].copy()
-                df_excel.columns = ["Bond ID", "Obs Date", "Govt Yield (%)", "Tenor (yrs)", "DI Yield (%)", "Spread (bp)"]
+                df_excel.columns = ["Bond ID", "Obs Date", "Govt Yield (%)", "DI Yield (%)", "Spread (bp)"]
                 df_excel.to_excel("data/govt_bonds_ltn_summary.xlsx", index=False)
 
                 print_fn("✅ LTNs processadas com sucesso (sem bootstrapping).")
@@ -205,25 +205,23 @@ if __name__ == "__main__":
             print_fn(f"🧼 Após remover anomalias: {len(govt_bonds)}")
 
             df_excel = govt_bonds[
-                ["id", "OBS_DATE", "YAS_BOND_YLD", "TENOR_YRS", "DI_YIELD", "SPREAD"]
+                ["id", "OBS_DATE", "YAS_BOND_YLD", "DI_YIELD", "SPREAD"]
             ].copy()
-            df_excel.columns = ["Bond ID", "Obs Date", "Govt Yield (%)", "Tenor (yrs)", "DI Yield (%)", "Spread (bp)"]
+            df_excel.columns = ["Bond ID", "Obs Date", "Govt Yield (%)", "DI Yield (%)", "Spread (bp)"]
             df_excel.to_excel(f"data/govt_bonds_{tipo}_summary.xlsx", index=False)
 
     # ============================================================
     # MERGE FINAL DE BENCHMARKS GOVERNAMENTAIS + CONSOLIDADO
     # ============================================================
-    import os
-
-    df_di = pd.read_excel("data/govt_bonds_di_summary.xlsx")[["Bond ID", "Obs Date", "Govt Yield (%)", "Tenor (yrs)", "DI Yield (%)", "Spread (bp)"]]
-    df_ipca = pd.read_excel("data/govt_bonds_ipca_summary.xlsx")[["Bond ID", "Obs Date", "Govt Yield (%)", "Tenor (yrs)", "DI Yield (%)", "Spread (bp)"]]
+    df_di = pd.read_excel("data/govt_bonds_di_summary.xlsx")[["Bond ID", "Obs Date", "Govt Yield (%)", "DI Yield (%)", "Spread (bp)"]]
+    df_ipca = pd.read_excel("data/govt_bonds_ipca_summary.xlsx")[["Bond ID", "Obs Date", "Govt Yield (%)", "DI Yield (%)", "Spread (bp)"]]
 
     if os.path.exists("data/govt_bonds_ltn_summary.xlsx"):
-        df_ltn = pd.read_excel("data/govt_bonds_ltn_summary.xlsx")[["Bond ID", "Obs Date", "Govt Yield (%)", "Tenor (yrs)", "DI Yield (%)", "Spread (bp)"]]
+        df_ltn = pd.read_excel("data/govt_bonds_ltn_summary.xlsx")[["Bond ID", "Obs Date", "Govt Yield (%)", "DI Yield (%)", "Spread (bp)"]]
         df_ltn["TYPE"] = "LTN"
     else:
         print("⚠️ Nenhum arquivo govt_bonds_ltn_summary.xlsx encontrado.")
-        df_ltn = pd.DataFrame(columns=["Bond ID", "Obs Date", "Govt Yield (%)", "Tenor (yrs)", "DI Yield (%)", "Spread (bp)", "TYPE"])
+        df_ltn = pd.DataFrame(columns=["Bond ID", "Obs Date", "Govt Yield (%)", "DI Yield (%)", "Spread (bp)", "TYPE"])
 
     df_di["TYPE"] = "NTNF"
     df_ipca["TYPE"] = "NTNB"
@@ -232,16 +230,15 @@ if __name__ == "__main__":
 
     print(f"📊 Contagem de linhas — LTN: {len(df_ltn)}, DI: {len(df_di)}, IPCA: {len(df_ipca)}, TOTAL: {len(govt_all)}")
 
-    cols = ["id", "ISSUER", "MATURITY"]
+    cols = ["id", "MATURITY"]
     govt_data = load_govt_bond_data(CONFIG["GOVT_PATH"])[cols].copy()
     govt_all = govt_all.merge(govt_data, left_on="Bond ID", right_on="id", how="left").drop(columns="id")
-    govt_all["Issuer"] = govt_all["ISSUER"]
     govt_all["Maturity"] = govt_all["MATURITY"]
-    govt_all.drop(columns=["ISSUER", "MATURITY"], inplace=True)
+    govt_all.drop(columns=["MATURITY"], inplace=True)
 
     DAYCOUNT = DayCounts("bus/252", calendar="cdr_anbima")
 
-    # ✅ Calculate Days to Maturity (bus/252 years × 252 business days)
+    # ✅ Calculate Days to Maturity (bus/252 convention)
     govt_all["Days to Maturity"] = govt_all.apply(
         lambda r: int(DAYCOUNT.days(r["Obs Date"], r["Maturity"]))
         if pd.notna(r["Obs Date"]) and pd.notna(r["Maturity"])
@@ -249,17 +246,15 @@ if __name__ == "__main__":
         axis=1
     )
 
-    # ✅ Remove 'Issuer', keep 'Maturity' and add 'Days to Maturity'
     govt_all = govt_all[[
         "TYPE", "Bond ID", "Obs Date", "Govt Yield (%)", "DI Yield (%)", "Spread (bp)", "Maturity", "Days to Maturity"
     ]]
     govt_all.sort_values(by=["TYPE", "Obs Date"], inplace=True)
 
-
     govt_all.to_excel("data/govt_bonds_all_consolidated.xlsx", index=False)
     print(f"✅ govt_bonds_all_consolidated.xlsx gerado com {len(govt_all)} linhas.")
 
-    benchmarks = govt_all[["Bond ID", "TYPE", "Issuer", "Maturity"]].drop_duplicates()
+    benchmarks = govt_all[["Bond ID", "TYPE", "Maturity", "Days to Maturity"]].drop_duplicates()
     benchmarks.rename(columns={"TYPE": "Benchmark"}, inplace=True)
     benchmarks.to_excel("data/govt_benchmark_summary_table.xlsx", index=False)
 
