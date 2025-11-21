@@ -153,7 +153,7 @@ def compute_spreads_ltn(df_ltn: pd.DataFrame, yc_table: pd.DataFrame) -> pd.Data
     # Converter yields para float e calcular spread (em basis points)
     df["YAS_BOND_YLD"] = pd.to_numeric(df["YAS_BOND_YLD"], errors="coerce")
     df["DI_YIELD"] = pd.to_numeric(df["DI_YIELD"], errors="coerce")
-    df["SPREAD"] = (df["YAS_BOND_YLD"] - df["DI_YIELD"]) * 100  # basis points
+    df["SPREAD"] = (df["YAS_BOND_YLD"] - df["DI_YIELD"])  # basis points
 
     # Criar bucket aproximado de maturidade
     names = [str(round(i, 2)) for i in yc_interp.index]
