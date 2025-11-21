@@ -238,9 +238,9 @@ if __name__ == "__main__":
 
     DAYCOUNT = DayCounts("bus/252", calendar="cdr_anbima")
 
-    # ✅ Calculate Days to Maturity (bus/252 convention)
+    # ✅ Calculate Days to Maturity in years (bus/252 convention)
     govt_all["Days to Maturity"] = govt_all.apply(
-        lambda r: int(DAYCOUNT.days(r["Obs Date"], r["Maturity"]))
+        lambda r: round(DAYCOUNT.days(r["Obs Date"], r["Maturity"]) / 252, 6)
         if pd.notna(r["Obs Date"]) and pd.notna(r["Maturity"])
         else None,
         axis=1
