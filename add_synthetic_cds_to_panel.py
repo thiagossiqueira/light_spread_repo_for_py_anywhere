@@ -20,13 +20,19 @@ spreads = latest_row[tenor_labels].values / 100
 
 # Crear estructura tipo bonos ficticios para ajuste NSS
 # (cash flows unitarios)
+
+# Criar estrutura tipo bonos ficticios (dicionários com fluxos)
 prices = np.ones_like(spreads)
-cash_flows = [np.array([1.0]) for _ in spreads]
 ref_date = pd.Timestamp.today()
 
-# Ajustar el modelo NSS a la curva
+# Cada fluxo de caixa como dict: {data_vencimento: valor}
+cash_flows = [{ref_date + pd.to_timedelta(int(t * 365), unit="D"): 1.0} for t in tenor_values]
+
+# Ajustar modelo NSS
 nss = NelsonSiegelSvensson(prices=prices, cash_flows=cash_flows, ref_date=ref_date)
 nss.fit_curve(tenor_values, spreads)
+
+
 
 # Calcular spreads sintéticos (en bps) para cada bono del panel
 panel["Synthetic_CDS_BRL"] = [
