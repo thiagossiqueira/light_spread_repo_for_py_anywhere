@@ -10,13 +10,13 @@ cds_surface = pd.read_excel(CONFIG["SYNTHETIC_CDS_PATH"])
 # Usar la última curva (fecha más reciente) de la superficie CDS-BRL
 latest_row = cds_surface.iloc[-1].dropna()
 
-# Extraer tenores (años) y spreads (bps)
-tenor_labels = latest_row.index
+# Extraer solo columnas que sean tenores válidos (excluye OBS_DATE)
+tenor_labels = [x for x in latest_row.index if "year" in x or "month" in x]
 tenor_values = np.array([
     float(x.replace("-year", "").replace("month", "").split("-")[0])
     for x in tenor_labels
 ])
-spreads = latest_row.values / 100  # convertir a porcentaje
+spreads = latest_row[tenor_labels].values / 100
 
 # Crear estructura tipo bonos ficticios para ajuste NSS
 # (cash flows unitarios)
