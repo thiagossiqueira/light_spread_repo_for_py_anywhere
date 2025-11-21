@@ -168,6 +168,24 @@ def download_govt_all():
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
+# --- BRL synthetic risk (CDS-BRL) ---
+@app.route("/brl-risk/surface")
+def brl_risk_surface():
+    return send_file("templates/brl_risk_spread_surface.html")
+
+@app.route("/brl-risk/table")
+def brl_risk_table():
+    return send_file("templates/brl_risk_summary.html")
+
+@app.route("/brl-risk/download")
+def brl_risk_download():
+    return send_file(
+        "data/synthetic_cds_brl_surface.xlsx",
+        download_name="synthetic_cds_brl_surface.xlsx",
+        as_attachment=True,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
 
 if __name__ == "__main__":
     app.run(debug=True)

@@ -12,6 +12,7 @@ spread-model/
 ├── Makefile                     # Atajos para ejecutar, testear e instalar el proyecto
 ├── WSGI.py                      # Archivo de configuración WSGI para despliegue en PythonAnywhere
 ├── main.py                      # Genera los datos y visualizaciones
+├── synthetic_cds_brl.py         # Genera la superficie CDS-BRL (riesgo país en reales)
 ├── app.py                       # Aplicación Flask para visualización web
 ├── pyproject.toml               # Configuración del proyecto Python
 ├── requirements.txt             # Dependencias

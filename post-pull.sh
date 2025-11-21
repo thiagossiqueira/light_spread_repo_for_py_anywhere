@@ -43,6 +43,19 @@ pip install -e .
 echo "📊 Executando main.py..."
 python main.py
 
+python app.py
+
+
+# === NEW SECTION ===
+echo "💡 Generando superficie CDS-BRL (riesgo Brasil sintético)..."
+if [ -f "synthetic_cds_brl.py" ]; then
+  python synthetic_cds_brl.py
+  echo "✅ synthetic_cds_brl.py ejecutado con éxito."
+else
+  echo "⚠️ Archivo synthetic_cds_brl.py no encontrado, omitiendo generación del CDS-BRL."
+fi
+# ====================
+
 # Reinicia app no PythonAnywhere
 if [ "$ON_PYTHONANYWHERE" = true ]; then
     echo "🌐 Recarregando aplicação com touch no wsgi.py"
