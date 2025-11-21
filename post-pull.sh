@@ -1,7 +1,7 @@
 #!/bin/bash
 echo "🔁 Iniciando post-pull automático..."
 
-# Detecta se estamos no PythonAnywhere
+# Detecta ambiente
 if [[ "$HOME" == "/home/tsiqueira4" ]]; then
     echo "🧠 Ambiente detectado: PythonAnywhere (produção)"
     ON_PYTHONANYWHERE=true
@@ -10,10 +10,15 @@ else
     ON_PYTHONANYWHERE=false
 fi
 
-# Habilita sparse checkout e define o que será baixado
-echo "📂 Configurando sparse-checkout para evitar arquivos pesados..."
-git config core.sparseCheckout true
+# Garante que estamos no branch master e atualiza origin
+echo "📂 Sincronizando repositório..."
+git fetch origin master
+git checkout master
 
+# Reconfigura sparse-checkout para garantir que o filtro é atualizado
+echo "📂 Configurando sparse-checkout..."
+git config core.sparseCheckout true
+mkdir -p .git/info
 cat > .git/info/sparse-checkout <<EOF
 /*
 !datos_y_modelos/db/one-day_interbank_deposit_futures_contract_di/hist_di_curve_contracts_db.xlsx
@@ -21,13 +26,12 @@ cat > .git/info/sparse-checkout <<EOF
 !datos_y_modelos/db/brazil_domestic_corp_bonds/brazil_debentures_universe/Resultado/resultado_parte*
 EOF
 
-# Aplica o filtro antes do pull
 echo "🧹 Aplicando filtro do sparse-checkout..."
 git read-tree -mu HEAD
 
-# Agora sim: executa git pull
-echo "📥 Executando git pull..."
-git pull origin master
+# Pull forçado para garantir atualização de arquivos rastreados
+echo "📥 Executando git pull origin master..."
+git pull --rebase --autostash origin master
 
 # Ativa venv local se aplicável
 if [ "$ON_PYTHONANYWHERE" = false ] && [ -d "venv" ]; then
@@ -36,17 +40,15 @@ if [ "$ON_PYTHONANYWHERE" = false ] && [ -d "venv" ]; then
 fi
 
 # Instala dependências
-echo "📦 Instalando dependências com pip install -e ."
-pip install -e .
+echo "📦 Instalando dependências..."
+pip install -e . --quiet
+pip install -r requirements.txt --quiet
 
-# Roda o script principal
+# Roda cálculos principais
 echo "📊 Executando main.py..."
 python main.py
 
-python app.py
-
-
-# === NEW SECTION ===
+# Gera superfície CDS-BRL sintética
 echo "💡 Generando superficie CDS-BRL (riesgo Brasil sintético)..."
 if [ -f "synthetic_cds_brl.py" ]; then
   python synthetic_cds_brl.py
@@ -54,9 +56,8 @@ if [ -f "synthetic_cds_brl.py" ]; then
 else
   echo "⚠️ Archivo synthetic_cds_brl.py no encontrado, omitiendo generación del CDS-BRL."
 fi
-# ====================
 
-# Reinicia app no PythonAnywhere
+# Reinicia app
 if [ "$ON_PYTHONANYWHERE" = true ]; then
     echo "🌐 Recarregando aplicação com touch no wsgi.py"
     touch /var/www/tsiqueira4_pythonanywhere_com_wsgi.py
