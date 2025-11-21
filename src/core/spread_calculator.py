@@ -75,7 +75,7 @@ def compute_spreads(corp_base, yields_ts, yc_table, observation_periods, tenors_
         lambda y: names[np.argmin(np.abs(vals - y))]
     )
 
-    #  Retorno garantido
+    # ✅ Retorno garantido
     return corp_bonds, skipped
 
 
@@ -87,6 +87,7 @@ def compute_spreads_ltn(df_ltn: pd.DataFrame, yc_table: pd.DataFrame) -> pd.Data
     Calcula spreads simples para LTNs (zero-coupon), comparando o yield observado
     com a curva DI interpolada de mesmo tenor.
     Usa convenção de contagem de dias bus/252 (ANBIMA), igual aos corporativos.
+    Inclui print de debug da curva DI interpolada (yc_interp).
     """
     df = df_ltn.copy()
 
@@ -107,11 +108,19 @@ def compute_spreads_ltn(df_ltn: pd.DataFrame, yc_table: pd.DataFrame) -> pd.Data
     if yc_table is None or yc_table.empty:
         raise ValueError("yc_table vazia: não é possível calcular DI de referência para LTNs.")
 
-    # Selecionar curva DI média ou linha única
+    # Selecionar curva DI média ou linha única (transposta para usar tenores como índice)
     if yc_table.shape[0] > 1:
-        yc_interp = yc_table.mean(axis=0)
+        yc_interp = yc_table.T.mean(axis=1)
     else:
-        yc_interp = yc_table.iloc[0]
+        yc_interp = yc_table.T.iloc[:, 0]
+
+    # 🧭 DEBUG: visualizar estrutura da curva DI interpolada
+    print("\n--- [DEBUG] Curva DI Interpolada (yc_interp) ---")
+    print(f"Tipo: {type(yc_interp)}")
+    print(f"Tamanho: {len(yc_interp)}")
+    print("Index (tenores):", yc_interp.index.tolist()[:10])
+    print("Valores (yields):", yc_interp.values[:10])
+    print("------------------------------------------------\n")
 
     # Converter índice da curva DI em numérico (ex: '1Y' → 1.0)
     try:
@@ -125,6 +134,9 @@ def compute_spreads_ltn(df_ltn: pd.DataFrame, yc_table: pd.DataFrame) -> pd.Data
     yc_interp = yc_interp[~pd.isna(yc_interp.index)]
 
     # Interpolar yield DI mais próximo para cada tenor observado
+    if len(yc_interp) == 0:
+        raise ValueError("Curva DI interpolada está vazia após conversão de índices.")
+
     df["DI_YIELD"] = df["TENOR_YRS"].apply(
         lambda t: yc_interp.iloc[(abs(yc_interp.index - t)).argmin()]
     )
