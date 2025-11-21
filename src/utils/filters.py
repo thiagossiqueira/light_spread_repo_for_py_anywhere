@@ -53,36 +53,31 @@ def filter_corporate_universe(df: pd.DataFrame, inflation_linked: str = "N", log
 
     return df
 
-def filter_government_universe(df: pd.DataFrame, inflation_linked: str = "N", log=None) -> pd.DataFrame:
-    print_fn = (
-        (lambda *args, **kwargs: print(*args, **kwargs))
-        if log is None else
-        (lambda *args, **kwargs: print(*args, **kwargs, file=log))
-    )
+
+def filter_government_universe(df: pd.DataFrame, inflation_linked: str = "N", bond_type: str = None, log=None) -> pd.DataFrame:
+    print_fn = (lambda *args, **kwargs: print(*args, **kwargs)) if log is None else (lambda *args, **kwargs: print(*args, **kwargs, file=log))
 
     df = df.copy()
     print_fn(f"🔍 Inicial: {len(df)} linhas")
 
-    df = df[df['CPN_TYP'].isin(['FIXED'])]
-    print_fn(f"➡ Após filtrar CPN_TYP='FIXED': {len(df)}")
+    # Mantém apenas títulos BRL e FIXED
+    df = df[df["CRNCY"] == "BRL"]
+    df = df[df["CPN_TYP"] == "FIXED"]
+    print_fn(f"➡ Após filtrar CPN_TYP='FIXED' e CRNCY='BRL': {len(df)}")
 
-    df = df[df['CRNCY'].isin(['BRL'])]
-    print_fn(f"➡ Após filtrar CRNCY='BRL': {len(df)}")
-
-    df["INFLATION_LINKED_INDICATOR"] = (
-        df["INFLATION_LINKED_INDICATOR"]
-        .astype(str)
-        .str.strip()
-        .str.upper()
-    )
-    print_fn("🧪 Valores únicos normalizados em INFLATION_LINKED_INDICATOR:",
-             df["INFLATION_LINKED_INDICATOR"].unique())
-
+    # Normaliza indicador de inflação
+    df["INFLATION_LINKED_INDICATOR"] = df["INFLATION_LINKED_INDICATOR"].astype(str).str.strip().str.upper()
     df = df[df["INFLATION_LINKED_INDICATOR"] == inflation_linked.strip().upper()]
     print_fn(f"➡ Após filtrar INFLATION_LINKED_INDICATOR={inflation_linked}: {len(df)}")
 
-    df["MATURITY"] = pd.to_datetime(df["MATURITY"], errors='coerce')
+    # Se bond_type for especificado (LTN, NTNF, NTNB)
+    if bond_type:
+        df = df[df["SECURITY_TYP"].str.upper() == bond_type.upper()]
+        print_fn(f"➡ Após filtrar SECURITY_TYP={bond_type}: {len(df)}")
+
+    df["MATURITY"] = pd.to_datetime(df["MATURITY"], errors="coerce")
     return df
+
 
 def anomaly_filtering_results(df: pd.DataFrame) -> pd.DataFrame:
     """

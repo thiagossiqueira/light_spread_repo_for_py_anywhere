@@ -64,3 +64,50 @@ def compute_spreads(corp_base, yields_ts, yc_table, observation_periods, tenors_
     )
 
     return corp_bonds, skipped
+
+
+def compute_spreads_ltn(df_ltn: pd.DataFrame, yc_table: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calcula spreads simples para LTNs (zero-coupon), comparando o yield observado
+    com a curva DI interpolada de mesmo tenor.
+    """
+    df = df_ltn.copy()
+
+    # Converter maturidade e data de observação
+    df["MATURITY"] = pd.to_datetime(df["MATURITY"], errors="coerce")
+    df["OBS_DATE"] = pd.to_datetime(df["OBS_DATE"], errors="coerce")
+
+    # Calcular tenor em anos
+    df["TENOR_YRS"] = (df["MATURITY"] - df["OBS_DATE"]).dt.days / 365.0
+    df = df[df["TENOR_YRS"] > 0]
+
+    # Caso não haja curva, aborta cedo
+    if yc_table is None or yc_table.empty:
+        raise ValueError("yc_table vazia: não é possível calcular DI de referência para LTNs.")
+
+    # Selecionar curva DI média ou linha única
+    if yc_table.shape[0] > 1:
+        yc_interp = yc_table.mean(axis=0)
+    else:
+        yc_interp = yc_table.iloc[0]
+
+    # Verificar se o índice da curva está em anos
+    if not hasattr(yc_interp, "index"):
+        raise ValueError("yc_table precisa ter o índice representando tenors (anos).")
+
+    # Interpolar yield DI mais próximo
+    df["DI_YIELD"] = df["TENOR_YRS"].apply(
+        lambda t: yc_interp.iloc[(abs(yc_interp.index - t)).argmin()]
+    )
+
+    # Spread em basis points
+    df["SPREAD"] = (df["YAS_BOND_YLD"] - df["DI_YIELD"]) * 100
+
+    # Bucketizar pelo tenor mais próximo
+    names = list(yc_interp.index)
+    vals = np.array(list(yc_interp.index))
+    df["TENOR_BUCKET"] = df["TENOR_YRS"].apply(
+        lambda y: names[np.argmin(np.abs(vals - y))]
+    )
+
+    return df
