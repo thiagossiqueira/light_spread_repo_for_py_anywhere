@@ -22,6 +22,7 @@ from src.utils.plotting import (
 )
 from src.core.windowing import build_observation_windows
 from src.core.spread_calculator import compute_spreads, compute_spreads_ltn
+from calendars.daycounts import DayCounts
 from src.config import CONFIG
 
 import pandas as pd
@@ -238,8 +239,22 @@ if __name__ == "__main__":
     govt_all["Maturity"] = govt_all["MATURITY"]
     govt_all.drop(columns=["ISSUER", "MATURITY"], inplace=True)
 
-    govt_all = govt_all[["TYPE", "Bond ID", "Obs Date", "Govt Yield (%)", "Tenor (yrs)", "DI Yield (%)", "Spread (bp)", "Issuer", "Maturity"]]
+    DAYCOUNT = DayCounts("bus/252", calendar="cdr_anbima")
+
+    # ✅ Calculate Days to Maturity (bus/252 years × 252 business days)
+    govt_all["Days to Maturity"] = govt_all.apply(
+        lambda r: int(DAYCOUNT.days(r["Obs Date"], r["Maturity"]))
+        if pd.notna(r["Obs Date"]) and pd.notna(r["Maturity"])
+        else None,
+        axis=1
+    )
+
+    # ✅ Remove 'Issuer', keep 'Maturity' and add 'Days to Maturity'
+    govt_all = govt_all[[
+        "TYPE", "Bond ID", "Obs Date", "Govt Yield (%)", "DI Yield (%)", "Spread (bp)", "Maturity", "Days to Maturity"
+    ]]
     govt_all.sort_values(by=["TYPE", "Obs Date"], inplace=True)
+
 
     govt_all.to_excel("data/govt_bonds_all_consolidated.xlsx", index=False)
     print(f"✅ govt_bonds_all_consolidated.xlsx gerado com {len(govt_all)} linhas.")
