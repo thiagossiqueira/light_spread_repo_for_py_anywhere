@@ -50,7 +50,7 @@ def compute_spreads(corp_base, yields_ts, yc_table, observation_periods, tenors_
                 obs_date, yc_table, tenor_yrs, tenors_dict, obs_date
             )
 
-            spread = yas_yld - interpolated_di_yield
+            spread = interpolated_di_yield - yas_yld
 
             expanded_rows.append({
                 "id": bond_id,
