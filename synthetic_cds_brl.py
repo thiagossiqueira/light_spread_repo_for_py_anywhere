@@ -9,12 +9,14 @@ from src.utils.plotting import plot_surface_spread_with_bonds
 
 DAYCOUNT = DayCounts("bus/252", calendar="cdr_anbima")
 
+
 def _nearest_bucket(x: float, names, vals):
-    """retorna o nome do bucket mais próximo do tenor em anos x"""
+    """Retorna o nome do bucket mais próximo do tenor em anos x"""
     if np.isnan(x):
         return None
     idx = int(np.argmin(np.abs(vals - x)))
     return names[idx]
+
 
 def build_and_save_synthetic_cds_surface(
     consolidated_path="data/govt_bonds_all_consolidated.xlsx",
@@ -35,11 +37,11 @@ def build_and_save_synthetic_cds_surface(
             "Bond ID": "id",
             "Obs Date": "OBS_DATE",
             "Govt Yield (%)": "GOVT_YLD",
-            "DI Yield (%)": "RF_YLD",            # DI para LTN/NTNF e WLA/IPCA p/ NTNB
+            "DI Yield (%)": "RF_YLD",  # DI p/ LTN/NTNF e WLA/IPCA p/ NTNB
             "Spread (bp)": "SPREAD_BP",
-            "Days to Maturity": "TENOR_YRS"
+            "Days to Maturity": "TENOR_YRS",
         },
-        inplace=True
+        inplace=True,
     )
 
     # datas
@@ -53,7 +55,7 @@ def build_and_save_synthetic_cds_surface(
                 lambda r: DAYCOUNT.days(r["OBS_DATE"], r["Maturity"]) / 252
                 if pd.notna(r["OBS_DATE"]) and pd.notna(r["Maturity"])
                 else np.nan,
-                axis=1
+                axis=1,
             )
         else:
             raise ValueError("Não há 'Days to Maturity' nem 'Maturity' para calcular TENOR_YRS.")
@@ -67,20 +69,28 @@ def build_and_save_synthetic_cds_surface(
     names = list(tenors_all.keys())
     vals = np.array(list(tenors_all.values()), dtype=float)
 
-    df["TENOR_BUCKET"] = df["TENOR_YRS"].astype(float).apply(lambda x: _nearest_bucket(x, names, vals))
+    df["TENOR_BUCKET"] = df["TENOR_YRS"].astype(float).apply(
+        lambda x: _nearest_bucket(x, names, vals)
+    )
 
     # --------- dataframe de auditoria (para overlay no gráfico)
     audit = df[["id", "OBS_DATE", "TENOR_BUCKET", "SPREAD_BP"]].copy()
     audit.rename(columns={"SPREAD_BP": "SPREAD"}, inplace=True)
 
+    # adiciona CPN_TYP vazio se não existir
+    if "CPN_TYP" not in audit.columns:
+        audit["CPN_TYP"] = ""
+
     # --------- superfície: média do spread por data x bucket
     surface = (
-        df.pivot_table(index="OBS_DATE", columns="TENOR_BUCKET", values="SPREAD_BP", aggfunc="mean")
+        df.pivot_table(
+            index="OBS_DATE", columns="TENOR_BUCKET", values="SPREAD_BP", aggfunc="mean"
+        )
         .sort_index()
     )
 
     # ordena colunas no eixo de tenores
-    tenor_order = sorted(tenors_all.items(), key=lambda x: x[1])  # [(name, value)]
+    tenor_order = sorted(tenors_all.items(), key=lambda x: x[1])
     ordered_cols = [k for k, _ in tenor_order if k in surface.columns]
     surface = surface[ordered_cols]
 
@@ -90,22 +100,19 @@ def build_and_save_synthetic_cds_surface(
 
     # --------- salva um resumo HTML (tabela simples)
     os.makedirs("templates", exist_ok=True)
-    (surface.tail(30)  # últimas 30 datas para ficar leve
-        .round(2)
-        .to_html(border=0, classes="table table-striped", index=True)
+    summary_html = surface.tail(30).round(2).to_html(
+        border=0, classes="table table-striped", index=True
     )
     with open(summary_out, "w", encoding="utf-8") as f:
-        f.write(
-            surface.tail(30).round(2).to_html(border=0, classes="table table-striped", index=True)
-        )
+        f.write(summary_html)
 
     # --------- plota a superfície 3D (reuso do plot existente)
     fig = plot_surface_spread_with_bonds(
         df_surface=surface,
-        audit=audit.rename(columns={"SPREAD": "SPREAD"}),  # já está como SPREAD em bp
+        audit=audit,
         title="Sovereign BRL Risk (Synthetic) – Spread Surface (bp)",
         zmin=zmin,
-        zmax=zmax
+        zmax=zmax,
     )
     fig.write_html(html_out)
 
