@@ -25,8 +25,12 @@ spreads = latest_row[tenor_labels].values / 100
 prices = np.ones_like(spreads)
 ref_date = pd.Timestamp.today()
 
-# Cada fluxo de caixa como dict: {data_vencimento: valor}
-cash_flows = [{ref_date + pd.to_timedelta(int(t * 365), unit="D"): 1.0} for t in tenor_values]
+# Cada fluxo de caixa como pandas.Series (índice = data, valor = fluxo)
+cash_flows = [
+    pd.Series(data=[1.0], index=[ref_date + pd.to_timedelta(int(t * 365), unit="D")])
+    for t in tenor_values
+]
+
 
 # Ajustar modelo NSS
 nss = NelsonSiegelSvensson(prices=prices, cash_flows=cash_flows, ref_date=ref_date)
