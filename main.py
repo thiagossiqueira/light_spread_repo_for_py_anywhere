@@ -248,7 +248,43 @@ if __name__ == "__main__":
                 print_fn("⚙️ Calculando spreads diretos para LTNs (zero-coupon, sem bootstrapping)...")
 
                 yc_table = interpolate_di_surface(surface, tenors)
-                govt_bonds = compute_spreads_ltn(govt_base, yc_table)
+
+                # Expandir govt_base com observações (OBS_DATE, yield)
+                if govt_base.empty:
+                    print_fn("⚠️ Nenhum bond LTN encontrado após o filtro.")
+                    continue
+
+                print_fn("⚙️ Calculando spreads diretos para LTNs (zero-coupon, sem bootstrapping)...")
+
+                yc_table = interpolate_di_surface(surface, tenors)
+
+                # Monta base expandida com yields históricos
+                govt_bonds_list = []
+                for bond_id in govt_base["id"].unique():
+                    if bond_id not in yields_ts.columns:
+                        continue
+
+                    subset = pd.DataFrame({
+                        "id": bond_id,
+                        "OBS_DATE": yields_ts.index,
+                        "YAS_BOND_YLD": yields_ts[bond_id],
+                    })
+                    # Junta metadados do título (maturity, etc.)
+                    subset = subset.merge(
+                        govt_base[["id", "MATURITY"]],
+                        on="id",
+                        how="left"
+                    )
+                    govt_bonds_list.append(subset)
+
+                if not govt_bonds_list:
+                    print_fn("⚠️ Nenhum yield disponível para LTNs — nada a calcular.")
+                    continue
+
+                govt_bonds_expanded = pd.concat(govt_bonds_list, ignore_index=True)
+
+                # Agora chamamos o cálculo com a base expandida
+                govt_bonds = compute_spreads_ltn(govt_bonds_expanded, yc_table)
 
                 govt_bonds = anomaly_filtering_results(govt_bonds)
                 print_fn(f"🧼 Após remover anomalias (LTN): {len(govt_bonds)}")
