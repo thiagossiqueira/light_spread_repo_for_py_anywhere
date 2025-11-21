@@ -186,6 +186,24 @@ def brl_risk_download():
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
+# --- Synthetic CDS-BRL applied to corporate panel ---
+@app.route("/panel-cds/download")
+def panel_cds_download():
+    """
+    Permite descargar el panel de bonos corporativos con la columna Synthetic_CDS_BRL agregada.
+    """
+    file_path = "datos_y_modelos/db/output_panel_data/panel_data_with_cds.xlsx"
+    try:
+        return send_file(
+            file_path,
+            download_name="panel_data_with_cds.xlsx",
+            as_attachment=True,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    except FileNotFoundError:
+        return "❌ Archivo panel_data_with_cds.xlsx no encontrado.", 404
+
+
 
 if __name__ == "__main__":
     app.run(debug=True)

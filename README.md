@@ -13,6 +13,7 @@ spread-model/
 ├── WSGI.py                      # Archivo de configuración WSGI para despliegue en PythonAnywhere
 ├── main.py                      # Genera los datos y visualizaciones
 ├── synthetic_cds_brl.py         # Genera la superficie CDS-BRL (riesgo país en reales)
+├── add_synthetic_cds_to_panel.py # Agrega la columna Synthetic_CDS_BRL al panel corporativo
 ├── app.py                       # Aplicación Flask para visualización web
 ├── pyproject.toml               # Configuración del proyecto Python
 ├── requirements.txt             # Dependencias

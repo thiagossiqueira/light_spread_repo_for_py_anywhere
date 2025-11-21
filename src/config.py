@@ -14,6 +14,9 @@ CONFIG = {
     "GOVT_YA_PATH": REPO_ROOT / "datos_y_modelos" / "db" / "brazil_domestic_govt_bonds" / "govt_ya.v1.xlsx",
     "HIST_CURVE_PATH": REPO_ROOT / "datos_y_modelos" / "db" / "one-day_interbank_deposit_futures_contract_di" / "hist_di_curve_contracts_db.v1.xlsx",
     "WLA_CURVE_PATH": REPO_ROOT / "datos_y_modelos" / "db" / "id_x_ipca_spread_futures" / "hist_ipca_curve_contracts_db.xlsx",
+    "SYNTHETIC_CDS_PATH": REPO_ROOT / "data" / "synthetic_cds_brl_surface.xlsx",
+    "PANEL_DATA_PATH": REPO_ROOT / "datos_y_modelos" / "db" / "output_panel_data" / "panel_data.xlsx",
+    "PANEL_DATA_OUTPUT_PATH": REPO_ROOT / "datos_y_modelos" / "db" / "output_panel_data" / "panel_data_with_cds.xlsx",
 
 
     "TENORS": {

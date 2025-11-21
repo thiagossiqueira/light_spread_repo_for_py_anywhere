@@ -57,6 +57,15 @@ else
   echo "⚠️ Archivo synthetic_cds_brl.py no encontrado, omitiendo generación del CDS-BRL."
 fi
 
+# Agrega columna Synthetic_CDS_BRL al panel corporativo
+echo "📈 Agregando columna Synthetic_CDS_BRL al panel de bonos corporativos..."
+if [ -f "add_synthetic_cds_to_panel.py" ]; then
+  python add_synthetic_cds_to_panel.py
+  echo "✅ add_synthetic_cds_to_panel.py ejecutado con éxito."
+else
+  echo "⚠️ Archivo add_synthetic_cds_to_panel.py no encontrado, omitiendo actualización del panel."
+fi
+
 # Reinicia app
 if [ "$ON_PYTHONANYWHERE" = true ]; then
     echo "🌐 Recarregando aplicação com touch no wsgi.py"
