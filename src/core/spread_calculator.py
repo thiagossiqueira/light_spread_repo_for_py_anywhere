@@ -1,12 +1,21 @@
-# core/spread_calculator.py
+# src/core/spread_calculator.py
 import numpy as np
 import pandas as pd
 from utils.interpolation import interpolate_yield_for_tenor
 from calendars.daycounts import DayCounts
 
+# Convenção ANBIMA: Business / 252 dias úteis
 DAYCOUNT = DayCounts("bus/252", calendar="cdr_anbima")
 
+
+# ================================================================
+# Função padrão: usada para bonds com cupom (corporate, NTNF, NTNB)
+# ================================================================
 def compute_spreads(corp_base, yields_ts, yc_table, observation_periods, tenors_dict):
+    """
+    Calcula spreads entre os yields dos bonds e a curva DI/IPCA interpolada.
+    Usa daycount bus/252 (ANBIMA). Retorna sempre (corp_bonds, skipped).
+    """
     expanded_rows = []
     skipped = []
 
@@ -20,6 +29,7 @@ def compute_spreads(corp_base, yields_ts, yc_table, observation_periods, tenors_
             if not (obs_start <= obs_date <= obs_end):
                 continue
 
+            # Yield observado (YAS_BOND_YLD)
             try:
                 yas_yld = yields_ts.at[obs_date, bond_id]
             except KeyError:
@@ -29,11 +39,12 @@ def compute_spreads(corp_base, yields_ts, yc_table, observation_periods, tenors_
                 skipped.append((bond_id, obs_date, "NaN yield"))
                 continue
 
+            # Tenor em anos (bus/252)
             tenor_yrs = DAYCOUNT.tf(obs_date, bond["MATURITY"])
-
             if tenor_yrs <= 0:
                 continue
 
+            # Interpolação da curva
             interpolated_di_yield = interpolate_yield_for_tenor(
                 obs_date, yc_table, tenor_yrs, tenors_dict, obs_date
             )
@@ -47,8 +58,8 @@ def compute_spreads(corp_base, yields_ts, yc_table, observation_periods, tenors_
                 "YAS_BOND_YLD": yas_yld,
                 "DI_YIELD": interpolated_di_yield,
                 "SPREAD": spread,
-                "CPN_TYP": "Corp bond",
-                "CPN": np.nan,
+                "CPN_TYP": bond.get("CPN_TYP", "Corp bond"),
+                "CPN": bond.get("CPN", np.nan),
                 "DAYS_TO_MATURITY": (bond["MATURITY"] - obs_date).days,
                 "TENOR_YRS": tenor_yrs,
             })
@@ -57,13 +68,20 @@ def compute_spreads(corp_base, yields_ts, yc_table, observation_periods, tenors_
     if corp_bonds.empty:
         raise ValueError("No valid corporate bond spreads calculated.")
 
+    # Bucketização de tenores
     names = list(tenors_dict.keys())
     vals = np.array(list(tenors_dict.values()))
     corp_bonds["TENOR_BUCKET"] = corp_bonds["TENOR_YRS"].apply(
         lambda y: names[np.argmin(np.abs(vals - y))]
     )
 
+    #  Retorno garantido
+    return corp_bonds, skipped
 
+
+# ================================================================
+# Função específica para LTNs (zero-coupon)
+# ================================================================
 def compute_spreads_ltn(df_ltn: pd.DataFrame, yc_table: pd.DataFrame) -> pd.DataFrame:
     """
     Calcula spreads simples para LTNs (zero-coupon), comparando o yield observado
@@ -76,7 +94,7 @@ def compute_spreads_ltn(df_ltn: pd.DataFrame, yc_table: pd.DataFrame) -> pd.Data
     df["MATURITY"] = pd.to_datetime(df["MATURITY"], errors="coerce")
     df["OBS_DATE"] = pd.to_datetime(df["OBS_DATE"], errors="coerce")
 
-    # ✅ Calcular tenor em anos pela convenção bus/252 (ANBIMA)
+    # Calcular tenor em anos pela convenção bus/252 (ANBIMA)
     df["TENOR_YRS"] = df.apply(
         lambda r: DAYCOUNT.tf(r["OBS_DATE"], r["MATURITY"])
         if pd.notna(r["OBS_DATE"]) and pd.notna(r["MATURITY"])
