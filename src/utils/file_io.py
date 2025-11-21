@@ -19,9 +19,43 @@ def load_corp_bond_data(path):
     return df
 
 def load_govt_bond_data(path):
+    """
+    Carrega a base de dados de títulos soberanos e padroniza campos-chave.
+    Inclui mapeamento CALC_TYP_DES → SECURITY_TYP (LTN, NTNF, NTNB, LFT).
+    """
     df = pd.read_excel(path, sheet_name="db_values_only")
+
+    # Padronização básica
     df["id"] = df["id"].astype(str).str.strip()
     df = df.drop_duplicates(subset=["id"])
+
+    # Garante que CRNCY e CPN_TYP existam (evita erro no filtro)
+    for col in ["CRNCY", "CPN_TYP", "INFLATION_LINKED_INDICATOR"]:
+        if col not in df.columns:
+            df[col] = None
+
+    # -----------------------------------------------------------
+    # 🔧 Mapeamento CALC_TYP_DES → SECURITY_TYP
+    # -----------------------------------------------------------
+    if "CALC_TYP_DES" in df.columns:
+        df["CALC_TYP_DES"] = df["CALC_TYP_DES"].astype(str).str.upper().str.strip()
+
+        mapping = {
+            "BRAZIL: BBCS/LTNS": "LTN",
+            "BRAZIL BBCS/LTNS": "LTN",
+            "BRAZIL LFT ANN-OVR": "LFT",
+            "BRAZIL FIXED CPN": "NTNF",
+            "BRAZIL I/L BOND": "NTNB",
+        }
+
+        df["SECURITY_TYP"] = df["CALC_TYP_DES"].map(mapping)
+    else:
+        df["SECURITY_TYP"] = None
+
+    # Fallback: se CALC_TYP_DES não existir, tenta usar 'papel'
+    if df["SECURITY_TYP"].isna().all() and "papel" in df.columns:
+        df["SECURITY_TYP"] = df["papel"].astype(str).str.upper().str.strip()
+
     return df
 
 def load_di_surface(path):

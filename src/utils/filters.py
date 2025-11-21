@@ -116,45 +116,36 @@ def load_raw_corp_data() -> pd.DataFrame:
     df["id"] = df["id"].astype(str).str.strip()
     return df
 
+def filter_government_universe(df: pd.DataFrame, inflation_linked: str = "N", bond_type: str = None, log=None) -> pd.DataFrame:
+    print_fn = (
+        (lambda *args, **kwargs: print(*args, **kwargs))
+        if log is None else
+        (lambda *args, **kwargs: print(*args, **kwargs, file=log))
+    )
 
-def load_raw_govt_data() -> pd.DataFrame:
-    """
-    Carrega a base de dados de bonds soberanos (governo) e cria a coluna SECURITY_TYP
-    a partir de CALC_TYP_DES, mapeando tipos padrão (LTN, LFT, NTNF, NTNB).
-    """
-    path = CONFIG["GOVT_PATH"]
+    df = df.copy()
+    print_fn(f"🔍 Inicial: {len(df)} linhas")
 
-    try:
-        df = pd.read_excel(path, sheet_name="db_values_only")
-    except FileNotFoundError:
-        raise FileNotFoundError(f"❌ Arquivo GOVT_PATH não encontrado: {path}")
-    except Exception as e:
-        raise RuntimeError(f"❌ Erro ao carregar GOVT_PATH ({path}): {e}")
+    # Filtros básicos
+    df = df[df["CPN_TYP"].astype(str).str.upper() == "FIXED"]
+    df = df[df["CRNCY"].astype(str).str.upper() == "BRL"]
+    print_fn(f"➡ Após CPN_TYP='FIXED' e CRNCY='BRL': {len(df)}")
 
-    if "id" not in df.columns:
-        raise KeyError("A coluna 'id' não foi encontrada na planilha GOVT_PATH.")
-    df["id"] = df["id"].astype(str).str.strip()
+    df["INFLATION_LINKED_INDICATOR"] = df["INFLATION_LINKED_INDICATOR"].astype(str).str.strip().str.upper()
+    print_fn("🧪 Valores únicos em INFLATION_LINKED_INDICATOR:", df["INFLATION_LINKED_INDICATOR"].unique())
 
-    # ===========================
-    # 🔧 Mapeamento CALC_TYP_DES → SECURITY_TYP
-    # ===========================
-    if "CALC_TYP_DES" in df.columns:
-        df["CALC_TYP_DES"] = df["CALC_TYP_DES"].astype(str).str.upper().str.strip()
+    df = df[df["INFLATION_LINKED_INDICATOR"] == inflation_linked.strip().upper()]
+    print_fn(f"➡ Após filtrar INFLATION_LINKED_INDICATOR={inflation_linked}: {len(df)}")
 
-        mapping = {
-            "BRAZIL: BBCS/LTNS": "LTN",
-            "BRAZIL BBCS/LTNS": "LTN",
-            "BRAZIL LFT ANN-OVR": "LFT",
-            "BRAZIL FIXED CPN": "NTNF",
-            "BRAZIL I/L BOND": "NTNB",
-        }
+    # Filtro por tipo de título, se informado
+    if bond_type and "SECURITY_TYP" in df.columns:
+        df = df[df["SECURITY_TYP"].astype(str).str.upper() == bond_type.upper()]
+        print_fn(f"➡ Após filtrar SECURITY_TYP={bond_type}: {len(df)}")
 
-        df["SECURITY_TYP"] = df["CALC_TYP_DES"].map(mapping)
-    else:
-        print("⚠️ Coluna CALC_TYP_DES não encontrada em GOVT_PATH — SECURITY_TYP não será gerado.")
-        df["SECURITY_TYP"] = None
+    df["MATURITY"] = pd.to_datetime(df["MATURITY"], errors="coerce")
 
     return df
+
 
 
 
