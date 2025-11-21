@@ -78,7 +78,7 @@ def build_and_save_synthetic_cds_surface(
     audit.rename(columns={"SPREAD_BP": "SPREAD"}, inplace=True)
 
     # adiciona colunas opcionais vazias (para compatibilidade com plotting)
-    for col in ["CPN_TYP", "CPN"]:
+    for col in ["CPN_TYP", "CPN", "MATURITY"]:
         if col not in audit.columns:
             audit[col] = ""
 
