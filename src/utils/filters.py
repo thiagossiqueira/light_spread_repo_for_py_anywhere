@@ -77,11 +77,11 @@ def filter_government_universe(df: pd.DataFrame, inflation_linked: str = "N", bo
 
     df["MATURITY"] = pd.to_datetime(df["MATURITY"], errors="coerce")
     return df
-
-def anomaly_filtering_results(df: pd.DataFrame) -> pd.DataFrame:
+def anomaly_filtering_results(df: pd.DataFrame, is_ltn: bool = False) -> pd.DataFrame:
     """
     Aplica filtros para eliminar observações com yields zerados ou spreads anômalos.
     Inclui prints de diagnóstico mostrando o impacto de cada regra.
+    Usa range em p.p. (±10) para LTNs e em bps (±1000) para os demais.
     """
 
     if df is None or df.empty:
@@ -89,8 +89,6 @@ def anomaly_filtering_results(df: pd.DataFrame) -> pd.DataFrame:
         return df
 
     df = df.copy()
-
-    # Diagnóstico inicial
     total_inicial = len(df)
     print(f"\n📊 [ANOMALY FILTER] Início: {total_inicial} observações")
 
@@ -100,20 +98,24 @@ def anomaly_filtering_results(df: pd.DataFrame) -> pd.DataFrame:
         print(f"➡️ Removendo {len(df_yield_zero)} registros com YAS_BOND_YLD = 0")
     df = df[df["YAS_BOND_YLD"] != 0]
 
-    # Filtro de spreads anômalos (em basis points, ±1000 bps = ±10 p.p.)
+    # Range dinâmico
+    if is_ltn:
+        low, high, unidade = -10, 10, "p.p."
+    else:
+        low, high, unidade = -1000, 1000, "bps"
+
+    # Filtro de spreads anômalos
     total_pre_spread = len(df)
-    mask_valid = (df["SPREAD"] >= -1000) & (df["SPREAD"] <= 1000)
+    mask_valid = (df["SPREAD"] >= low) & (df["SPREAD"] <= high)
     removidos_spread = total_pre_spread - mask_valid.sum()
 
-    print(f"➡️ Removendo {removidos_spread} registros com SPREAD fora de [-1000, 1000] bps")
+    print(f"➡️ Removendo {removidos_spread} registros com SPREAD fora de [{low}, {high}] {unidade}")
     df = df[mask_valid]
 
-    # Resultado final
     total_final = len(df)
     print(f"✅ [ANOMALY FILTER] Final: {total_final} observações válidas (de {total_inicial} iniciais)\n")
 
     return df
-
 
 def apply_custom_filters(df: pd.DataFrame, inflation: str, exclude_gov: bool, exclude_fin: bool,
                          cpns: list) -> pd.DataFrame:

@@ -179,7 +179,7 @@ if __name__ == "__main__":
 
                 govt_bonds_expanded = pd.concat(govt_bonds_list, ignore_index=True)
                 govt_bonds = compute_spreads_ltn(govt_bonds_expanded, yc_table)
-                govt_bonds = anomaly_filtering_results(govt_bonds)
+                govt_bonds = anomaly_filtering_results(govt_bonds, is_ltn=True)
                 print_fn(f"🧼 Após remover anomalias (LTN): {len(govt_bonds)}")
 
                 df_excel = govt_bonds[
