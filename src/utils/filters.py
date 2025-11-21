@@ -144,7 +144,7 @@ def filter_government_universe(
     # =======================================================
     if bond_type == "LTN":
         # Zero-coupon: CPN_TYP deve indicar ausência de cupom
-        zero_like = ["ZERO", "DISCOUNT", "ZC", "NONE", "N/A", "NAN", ""]
+        zero_like = ["ZERO", "ZERO COUPON" ,"DISCOUNT", "ZC", "NONE", "N/A", "NAN", ""]
         df["CPN_TYP"] = df["CPN_TYP"].astype(str).str.upper().str.strip()
         df = df[df["CPN_TYP"].isin(zero_like)]
 
