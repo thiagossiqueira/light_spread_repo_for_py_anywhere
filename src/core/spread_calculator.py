@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 from utils.interpolation import interpolate_yield_for_tenor
 from calendars.daycounts import DayCounts
+from config import CONFIG  # ✅ used to map tenor labels like "12-year" -> 12.0
 
 # Convenção ANBIMA: Business / 252 dias úteis
 DAYCOUNT = DayCounts("bus/252", calendar="cdr_anbima")
@@ -114,7 +115,7 @@ def compute_spreads_ltn(df_ltn: pd.DataFrame, yc_table: pd.DataFrame) -> pd.Data
     else:
         yc_interp = yc_table.T.iloc[:, 0]
 
-    # 🧭 DEBUG: visualizar estrutura da curva DI interpolada
+    # 🧭 DEBUG: visualizar estrutura inicial da curva DI
     print("\n--- [DEBUG] Curva DI Interpolada (yc_interp) ---")
     print(f"Tipo: {type(yc_interp)}")
     print(f"Tamanho: {len(yc_interp)}")
@@ -122,21 +123,29 @@ def compute_spreads_ltn(df_ltn: pd.DataFrame, yc_table: pd.DataFrame) -> pd.Data
     print("Valores (yields):", yc_interp.values[:10])
     print("------------------------------------------------\n")
 
-    # Converter índice da curva DI em numérico (ex: '1Y' → 1.0)
-    try:
+    # Converter índice da curva DI em numérico usando CONFIG["TENORS"]
+    tenor_map = CONFIG.get("TENORS", {})
+
+    if yc_interp.index.dtype == object:
+        mapped_index = yc_interp.index.map(tenor_map)
+        yc_interp.index = mapped_index.astype(float)
+    else:
         yc_interp.index = pd.to_numeric(yc_interp.index, errors="coerce")
-    except Exception:
-        yc_interp.index = (
-            yc_interp.index.astype(str)
-            .str.extract(r"(\d+\.?\d*)")[0]
-            .astype(float)
-        )
+
+    # Remover NaNs (unmapped labels)
     yc_interp = yc_interp[~pd.isna(yc_interp.index)]
 
-    # Interpolar yield DI mais próximo para cada tenor observado
-    if len(yc_interp) == 0:
-        raise ValueError("Curva DI interpolada está vazia após conversão de índices.")
+    # 🧭 DEBUG: mostrar tenores mapeados
+    print("\n--- [DEBUG] yc_interp index mapped with CONFIG['TENORS'] ---")
+    print("Mapped index (tenors in years):", yc_interp.index.tolist()[:10])
+    print("Yields:", yc_interp.values[:10])
+    print("------------------------------------------------------------\n")
 
+    # Verificar se há curva válida
+    if len(yc_interp) == 0:
+        raise ValueError("Curva DI interpolada está vazia após mapeamento de índices.")
+
+    # Interpolar yield DI mais próximo para cada tenor observado
     df["DI_YIELD"] = df["TENOR_YRS"].apply(
         lambda t: yc_interp.iloc[(abs(yc_interp.index - t)).argmin()]
     )
