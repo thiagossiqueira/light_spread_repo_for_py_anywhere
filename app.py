@@ -152,6 +152,22 @@ def sov_download(prefixo):
 def sov_benchmark_summary():
     return render_template("govt_benchmark_summary_table.html")
 
+# ✅ nova rota: download do consolidado de títulos soberanos
+@app.route("/sov-download/all")
+def download_govt_all():
+    """
+    Permite baixar o arquivo consolidado de títulos soberanos (LTN + NTNF + NTNB).
+    """
+    file_path = "data/govt_bonds_all_consolidated.xlsx"
+    if not os.path.exists(file_path):
+        return "❌ Arquivo govt_bonds_all_consolidated.xlsx não encontrado.", 404
+    return send_file(
+        file_path,
+        download_name="govt_bonds_all_consolidated.xlsx",
+        as_attachment=True,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
 
 if __name__ == "__main__":
     app.run(debug=True)
