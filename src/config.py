@@ -18,6 +18,11 @@ CONFIG = {
     "PANEL_DATA_PATH": REPO_ROOT / "datos_y_modelos" / "db" / "output_panel_data" / "panel_data.xlsx",
     "PANEL_DATA_OUTPUT_PATH": REPO_ROOT / "datos_y_modelos" / "db" / "output_panel_data" / "panel_data_with_cds.xlsx",
 
+    SOVEREIGN_REAL_CURVE: {
+        "path": GOVT_PATH,
+        "sheet_name": "db_values_only",
+        "use_nss": True,
+    },
 
     "TENORS": {
         "12-year": 12.0,
@@ -45,6 +50,20 @@ CONFIG = {
         "3-year": 3.0,
         "4-year": 4.0,
         "5-year": 5.0
+    },
+
+    "REAL_CURVE_TENORS": {
+        "1-year": 1.0,
+        "2-year": 2.0,
+        "3-year": 3.0,
+        "4-year": 4.0,
+        "5-year": 5.0,
+        "7-year": 7.0,
+        "10-year": 10.0,
+        "15-year": 15.0,
+        "20-year": 20.0,
+        "25-year": 25.0,
+        "30-year": 30.0,
     },
 
 
