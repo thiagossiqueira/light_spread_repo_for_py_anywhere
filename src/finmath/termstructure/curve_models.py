@@ -427,25 +427,111 @@ def nss_func(t, beta0, beta1, beta2, tau1, tau2):
     return beta0 + beta1 * term1 + beta2 * term2 + 0.0 * term3
 
 
-def fit_nss_yield_curve(maturities, yields):
+# ---------------------------------------------------------------------------
+# Robust NSS yield-curve fit (for NTNB real curve etc.)
+# ---------------------------------------------------------------------------
+
+def fit_nss_yield_curve(maturities: np.ndarray, yields: np.ndarray):
     """
-    Fits NSS curve to observed NTNB yields.
-    Uses the same NSS structure as in add_synthetic_cds_to_panel.py.
+    Ajusta uma curva NSS simples em termos de yield(t).
+
+    Entradas:
+      - maturities: array de tenores (anos, float)
+      - yields: array de yields em decimal (ex: 0.06 = 6% a.a.)
+
+    Comportamento robusto:
+      - remove NaN / inf
+      - exige >= 4 pontos e alguma variância
+      - tenta curve_fit
+      - se não conseguir, cai num fallback de curva flat (constante).
     """
+
+    # ------- limpeza básica -------
     maturities = np.asarray(maturities, dtype=float)
     yields = np.asarray(yields, dtype=float)
 
-    # Initial guess
-    beta0 = yields[-1]
-    beta1 = yields[0] - beta0
-    beta2 = 0.0
-    tau1  = 2.0
-    tau2  = 4.0
+    mask = np.isfinite(maturities) & np.isfinite(yields)
+    maturities = maturities[mask]
+    yields = yields[mask]
 
-    p0 = [beta0, beta1, beta2, tau1, tau2]
+    # garantir tenores positivos
+    mask_pos = maturities > 0.0
+    maturities = maturities[mask_pos]
+    yields = yields[mask_pos]
 
-    params, _ = curve_fit(nss_func, maturities, yields, p0=p0, maxfev=20000)
-    return NSSYieldCurve(params)
+    if len(maturities) < 4:
+        # poucos pontos: usa curva flat
+        y_flat = float(np.nanmean(yields)) if len(yields) > 0 else 0.0
+        return _FlatNSSCurve(y_flat)
+
+    if np.nanstd(yields) < 1e-5:
+        # curva quase flat: não vale a pena otimizar
+        y_flat = float(np.nanmean(yields))
+        return _FlatNSSCurve(y_flat)
+
+    # ------- definição NSS "clássica" -------
+    def nss_func(t, beta0, beta1, beta2, tau1, tau2):
+        t = np.maximum(t, 1e-6)
+        term1 = (1 - np.exp(-t / tau1)) / (t / tau1)
+        term2 = term1 - np.exp(-t / tau1)
+        term3 = ((1 - np.exp(-t / tau2)) / (t / tau2)) - np.exp(-t / tau2)
+        return beta0 + beta1 * term1 + beta2 * term2 + 0.0 * term3  # NSS simplificada
+
+    # chute inicial razoável
+    beta0_0 = float(np.nanmean(yields))
+    beta1_0 = 0.0
+    beta2_0 = 0.0
+    tau1_0 = 2.0
+    tau2_0 = 5.0
+    p0 = [beta0_0, beta1_0, beta2_0, tau1_0, tau2_0]
+
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=RuntimeWarning)
+            warnings.simplefilter("ignore", category=opt.OptimizeWarning)
+
+            params, _ = curve_fit(
+                nss_func,
+                maturities,
+                yields,
+                p0=p0,
+                maxfev=20000,
+            )
+    except Exception:
+        # falhou a otimização → curva flat
+        return _FlatNSSCurve(beta0_0)
+
+    beta0, beta1, beta2, tau1, tau2 = params
+
+    class _NSSYieldCurve:
+        def __init__(self, b0, b1, b2, t1, t2):
+            self.b0 = float(b0)
+            self.b1 = float(b1)
+            self.b2 = float(b2)
+            self.t1 = float(t1)
+            self.t2 = float(t2)
+
+        def yield_at(self, t: float) -> float:
+            t = max(float(t), 1e-6)
+            term1 = (1 - np.exp(-t / self.t1)) / (t / self.t1)
+            term2 = term1 - np.exp(-t / self.t1)
+            term3 = ((1 - np.exp(-t / self.t2)) / (t / self.t2)) - np.exp(-t / self.t2)
+            return self.b0 + self.b1 * term1 + self.b2 * term2 + 0.0 * term3
+
+    return _NSSYieldCurve(beta0, beta1, beta2, tau1, tau2)
+
+
+class _FlatNSSCurve:
+    """
+    Fallback simples: curva flat (mesmo yield para todos os tenores).
+    Implementa a mesma interface mínima de .yield_at(t) usada no resto do código.
+    """
+
+    def __init__(self, y_flat: float):
+        self.y_flat = float(y_flat)
+
+    def yield_at(self, t: float) -> float:
+        return self.y_flat
 
 
 class NSSYieldCurve:
