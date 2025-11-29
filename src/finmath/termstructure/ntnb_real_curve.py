@@ -17,80 +17,63 @@ DAYCOUNT_BUS252 = DayCounts("bus/252", calendar="cdr_anbima")
 # ------------------------------------------------------
 def load_ntnb_metadata(govt_path: str) -> pd.DataFrame:
     """
-    Lê metadados dos títulos soberanos e filtra apenas NTN-B
-    (BRAZIL I/L BOND) a partir da planilha domestic_sovereign_curve_brazil.xlsx.
-
-    Espera:
-      - sheet_name="db_values_only"
-      - colunas: ID_ISIN (ou id), CALC_TYP_DES, MATURITY, etc.
-      - identificadores com sufixo " Corp" (ex: "BRSTNCNTB4U6 Corp")
+    Load NTNB metadata using the correct identifier column: 'ID'.
+    This is the same identifier used in govt_ya.v1.xlsx (e.g. 'BRSTNCNTB4U6 Corp').
     """
+
     df = pd.read_excel(govt_path, sheet_name="db_values_only")
 
-    # Alguns arquivos usam "id" em vez de "ID_ISIN" como identificador único
-    if "ID_ISIN" in df.columns:
-        id_col = "ID_ISIN"
-    else:
-        id_col = "id"
+    # The correct ID column is 'ID' (uppercase)
+    if "ID" not in df.columns:
+        raise ValueError("Column 'ID' not found in metadata file.")
 
-    # Normalizar ID: string + strip
-    df[id_col] = df[id_col].astype(str).str.strip()
+    # Normalize identifiers EXACTLY as in YA file
+    df["ID"] = df["ID"].astype(str).str.strip()
 
-    # Filtrar apenas NTN-B
-    if "CALC_TYP_DES" in df.columns:
-        df["CALC_TYP_DES"] = df["CALC_TYP_DES"].astype(str).str.upper().str.strip()
-        df = df[df["CALC_TYP_DES"] == "BRAZIL I/L BOND"].copy()
-    else:
-        # fallback: se não houver CALC_TYP_DES, retorna vazio
-        return df.iloc[0:0]
+    # Filter only NTNB
+    df = df[df["CALC_TYP_DES"] == "BRAZIL I/L BOND"].copy()
 
-    # Converter MATURITY para datetime
+    # Parse maturity
     df["MATURITY"] = pd.to_datetime(df["MATURITY"], errors="coerce")
-    df = df.dropna(subset=[id_col, "MATURITY"])
+    df = df.dropna(subset=["ID", "MATURITY"])
 
-    # Garantir colunas mínimas para cupom, frequência etc.
+    # Ensure coupon-related fields exist
     for col in ["CPN", "CPN_FREQ", "CPN_TYP"]:
         if col not in df.columns:
             df[col] = np.nan
 
-    # Usar o identificador como índice (mesmo ID usado em govt_ya.v1.xlsx)
-    df = df.set_index(id_col)
+    # Set index = ID (matches YA sheet column names)
+    df = df.set_index("ID")
 
     return df
-
 
 # ------------------------------------------------------
 # 2. Carregar yields YA (NTN-B) do GOVT_YA_PATH
 # ------------------------------------------------------
-def load_ntnb_yields(ya_path: str, isin_index) -> pd.DataFrame:
+def load_ntnb_yields(ya_path: str, id_list):
     """
-    Lê as taxas das NTN-B do arquivo govt_ya.v1.xlsx (sheet "ya_values_only").
+    Load YA yields using identifier 'ID' (e.g. 'BRSTNCNTB4U6 Corp').
+    """
 
-    Espera:
-      - Primeira coluna: data
-      - Demais colunas: IDs iguais aos do metadata
-        (ex: "BRSTNCNTB4U6 Corp").
-    """
     df = pd.read_excel(ya_path, sheet_name="ya_values_only")
 
-    # Normalizar nomes de colunas (manter exatamente o que vem do Excel,
-    # apenas strip de espaços e conversão para string)
+    # Keep column names EXACT
     df.columns = [str(c).strip() for c in df.columns]
 
-    # Primeira coluna = data
     date_col = df.columns[0]
     df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
     df = df.dropna(subset=[date_col]).set_index(date_col)
 
-    # Manter apenas colunas que existem no índice de metadados
-    isin_list = list(isin_index)
-    cols = [c for c in df.columns if c in isin_list]
+    # Match only NTNB tickers
+    cols = [c for c in df.columns if c in id_list]
 
-    # Subconjunto + conversão para numérico
+    # DEBUG
+    print("[DEBUG] YA columns:", df.columns.tolist())
+    print("[DEBUG] Metadata index:", list(id_list))
+    print("[DEBUG] Matching columns:", cols)
+
     df = df[cols].apply(pd.to_numeric, errors="coerce")
-
     return df
-
 
 # ------------------------------------------------------
 # 3. Construir curva real soberana para UMA data (NSS)
