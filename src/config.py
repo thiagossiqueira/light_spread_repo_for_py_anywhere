@@ -18,7 +18,7 @@ CONFIG = {
     "PANEL_DATA_PATH": REPO_ROOT / "datos_y_modelos" / "db" / "output_panel_data" / "panel_data.xlsx",
     "PANEL_DATA_OUTPUT_PATH": REPO_ROOT / "datos_y_modelos" / "db" / "output_panel_data" / "panel_data_with_cds.xlsx",
 
-    SOVEREIGN_REAL_CURVE: {
+    "SOVEREIGN_REAL_CURVE": {
         "path": GOVT_PATH,
         "sheet_name": "db_values_only",
         "use_nss": True,
