@@ -33,7 +33,9 @@ from src.core.curve_builder import (
     build_real_curve_for_obs_date,
     wla_yield_for_date,
 )
-from config import REAL_CURVE_TENORS
+
+# 🔧 FIX: REAL_CURVE_TENORS must be loaded from CONFIG
+REAL_CURVE_TENORS = CONFIG["REAL_CURVE_TENORS"]
 
 import pandas as pd
 import os
@@ -59,14 +61,14 @@ if __name__ == "__main__":
             "surface": load_di_surface(CONFIG["HIST_CURVE_PATH"]),
             "tenors": CONFIG["TENORS"],
             "inflation_linked": "N",
-            "use_real_curve": False,   # DI uses nominal DI curve
+            "use_real_curve": False,
         },
         "ipca": {
             "yields_ts": load_yield_surface(CONFIG["YA_PATH"]),
-            "surface": None,  # we will build from real curve
+            "surface": None,
             "tenors": REAL_CURVE_TENORS,
             "inflation_linked": "Y",
-            "use_real_curve": True,    # IPCA uses REAL curve
+            "use_real_curve": True,
         },
     }
 
@@ -101,7 +103,6 @@ if __name__ == "__main__":
             # BUILD SURFACE
             # ============================================================
             if tipo == "di":
-                # old behavior
                 surface = load_di_surface(CONFIG["HIST_CURVE_PATH"])
                 yc_table = interpolate_di_surface(surface, tenors)
 
@@ -219,7 +220,6 @@ if __name__ == "__main__":
             print_fn(f"🧮 Bonds disponíveis após filtro ({tipo}): {len(govt_base)}")
 
             if tipo == "ltn":
-                # unchanged
                 yc_table = interpolate_di_surface(load_di_surface(CONFIG["HIST_CURVE_PATH"]), tenors)
                 if govt_base.empty:
                     print_fn("⚠️ Nenhum bond LTN encontrado.")
@@ -287,13 +287,13 @@ if __name__ == "__main__":
 
             govt_bonds = anomaly_filtering_results(govt_bonds)
             df_excel = govt_bonds[
-                ["id", "OBS_DATE", "YAS_BOND_YLD", "DI_YIELD", "SPREAD"]
+                ["id", "OBS_DATE", "YAS_BASE_YLD", "DI_YIELD", "SPREAD"]
             ].copy()
             df_excel.columns = ["Bond ID", "Obs Date", "Govt Yield (%)", "DI Yield (%)", "Spread (bp)"]
             df_excel.to_excel(f"data/govt_bonds_{tipo}_summary.xlsx", index=False)
 
     # ============================================================
-    # FINAL BENCHMARK MERGE (unchanged)
+    # FINAL BENCHMARK MERGE
     # ============================================================
     df_di = pd.read_excel("data/govt_bonds_di_summary.xlsx")[["Bond ID", "Obs Date", "Govt Yield (%)", "DI Yield (%)", "Spread (bp)"]]
     df_ipca = pd.read_excel("data/govt_bonds_ipca_summary.xlsx")[["Bond ID", "Obs Date", "Govt Yield (%)", "DI Yield (%)", "Spread (bp)"]]
