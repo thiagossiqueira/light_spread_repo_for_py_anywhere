@@ -19,10 +19,11 @@ CONFIG = {
     "PANEL_DATA_OUTPUT_PATH": REPO_ROOT / "datos_y_modelos" / "db" / "output_panel_data" / "panel_data_with_cds.xlsx",
 
     "SOVEREIGN_REAL_CURVE": {
-        "path": GOVT_PATH,
-        "sheet_name": "db_values_only",
-        "use_nss": True,
+    "path": REPO_ROOT / "datos_y_modelos" / "Domestic" / "domestic_sovereign_curve_brazil.xlsx",
+    "sheet_name": "db_values_only",
+    "use_nss": True,
     },
+
 
     "TENORS": {
         "12-year": 12.0,
