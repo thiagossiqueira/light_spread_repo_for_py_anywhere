@@ -50,6 +50,24 @@ if __name__ == "__main__":
     # ============================================================
     ntnb_meta_df, ntnb_ya_df = load_real_curve_support()
 
+    print("\n=== NTNB Metadata Index ===")
+    print(ntnb_meta_df.index.tolist())
+
+    print("\n=== YA Columns After Normalization ===")
+    ya_raw = pd.read_excel(CONFIG["GOVT_YA_PATH"], sheet_name="ya_values_only")
+    ya_raw.columns = [str(c).strip() for c in ya_raw.columns]
+    print(ya_raw.columns.tolist())
+
+    print("\n=== Checking Overlaps (before filtering) ===")
+    overlap = set(ntnb_meta_df.index) & set(ya_raw.columns)
+    print("Overlap count:", len(overlap))
+    print("Overlap sample:", list(overlap)[:10])
+
+    print("\n=== YA Data After Loader ===")
+    print("Columns in ntnb_ya_df:", ntnb_ya_df.columns.tolist())
+    print("Column count:", len(ntnb_ya_df.columns))
+
+
     print("NTNB metadata count:", len(ntnb_meta_df))
     print(ntnb_meta_df.index.tolist()[:15])
 
