@@ -28,7 +28,16 @@ def load_ntnb_metadata(govt_path: str) -> pd.DataFrame:
         if col not in df.columns:
             df[col] = np.nan
 
-    df = df.set_index("ID_ISIN")
+    # Use the ANBIMA/Bloomberg ID, not ISIN
+    if "id" in df.columns:
+        df["id"] = df["id"].astype(str).str.strip()
+        df = df.set_index("id")
+    elif "ID" in df.columns:
+        df["ID"] = df["ID"].astype(str).str.strip()
+        df = df.set_index("ID")
+    else:
+        raise ValueError("ID column not found in NTNB metadata")
+
     return df
 
 
@@ -59,7 +68,8 @@ def load_ntnb_yields(ya_path: str, isin_list):
     df = df.dropna(subset=[date_col]).set_index(date_col)
 
     # Only keep columns that match metadata ISINs EXACTLY
-    cols = [isin for isin in isin_list if isin in df.columns]
+    cols = [c for c in df.columns if c in isin_list]
+
 
     # --- DEBUG ---
     print("\n[DEBUG] YA columns after normalization:", df.columns.tolist()[:20])
