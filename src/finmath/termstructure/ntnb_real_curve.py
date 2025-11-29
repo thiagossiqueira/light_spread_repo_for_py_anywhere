@@ -2,93 +2,99 @@
 
 import numpy as np
 import pandas as pd
+
 from calendars.daycounts import DayCounts
 
-from src.finmath.termstructure.curve_models import CurveBootstrap
+from src.finmath.termstructure.curve_models import fit_nss_yield_curve
 from src.finmath.termstructure.combined_real_curve import CombinedRealCurve
 
-# ANBIMA convention for curves
+# ANBIMA convention for sovereign curves
 DAYCOUNT_BUS252 = DayCounts("bus/252", calendar="cdr_anbima")
 
 
-# =====================================================================
-# 1. METADATA: carregar NTNB usando a coluna "id" como chave
-# =====================================================================
+# ------------------------------------------------------
+# 1. Carregar metadados (NTN-B) a partir do GOVT_PATH
+# ------------------------------------------------------
 def load_ntnb_metadata(govt_path: str) -> pd.DataFrame:
     """
-    Lê metadados dos títulos públicos e filtra apenas NTN-B.
-    Sheet: db_values_only
-    Filtro: CALC_TYP_DES == 'BRAZIL I/L BOND'
-    Índice: coluna 'id' (ex.: 'BRSTNCNTB4U6 Corp')
+    Lê metadados dos títulos soberanos e filtra apenas NTN-B
+    (BRAZIL I/L BOND) a partir da planilha domestic_sovereign_curve_brazil.xlsx.
+
+    Espera:
+      - sheet_name="db_values_only"
+      - colunas: ID_ISIN (ou id), CALC_TYP_DES, MATURITY, etc.
+      - identificadores com sufixo " Corp" (ex: "BRSTNCNTB4U6 Corp")
     """
     df = pd.read_excel(govt_path, sheet_name="db_values_only")
 
-    # Filtrar só NTN-B
-    df = df[df["CALC_TYP_DES"] == "BRAZIL I/L BOND"].copy()
+    # Alguns arquivos usam "id" em vez de "ID_ISIN" como identificador único
+    if "ID_ISIN" in df.columns:
+        id_col = "ID_ISIN"
+    else:
+        id_col = "id"
 
-    # Normalizar 'id'
-    df["id"] = df["id"].astype(str).str.strip()
+    # Normalizar ID: string + strip
+    df[id_col] = df[id_col].astype(str).str.strip()
 
-    # Maturidade
+    # Filtrar apenas NTN-B
+    if "CALC_TYP_DES" in df.columns:
+        df["CALC_TYP_DES"] = df["CALC_TYP_DES"].astype(str).str.upper().str.strip()
+        df = df[df["CALC_TYP_DES"] == "BRAZIL I/L BOND"].copy()
+    else:
+        # fallback: se não houver CALC_TYP_DES, retorna vazio
+        return df.iloc[0:0]
+
+    # Converter MATURITY para datetime
     df["MATURITY"] = pd.to_datetime(df["MATURITY"], errors="coerce")
-    df = df.dropna(subset=["id", "MATURITY"])
+    df = df.dropna(subset=[id_col, "MATURITY"])
 
-    # Garantir colunas de cupom
+    # Garantir colunas mínimas para cupom, frequência etc.
     for col in ["CPN", "CPN_FREQ", "CPN_TYP"]:
         if col not in df.columns:
             df[col] = np.nan
 
-    # Índice = id (ticker com "Corp")
-    df = df.set_index("id")
+    # Usar o identificador como índice (mesmo ID usado em govt_ya.v1.xlsx)
+    df = df.set_index(id_col)
 
     return df
 
 
-# =====================================================================
-# 2. CASHFLOWS simplificados para NTN-B (em termos REAIS)
-# =====================================================================
-def _build_cashflows_for_bond(
-    obs_date: pd.Timestamp,
-    maturity: pd.Timestamp,
-    coupon_rate: float,
-    freq: int,
-) -> pd.Series | None:
+# ------------------------------------------------------
+# 2. Carregar yields YA (NTN-B) do GOVT_YA_PATH
+# ------------------------------------------------------
+def load_ntnb_yields(ya_path: str, isin_index) -> pd.DataFrame:
     """
-    Constrói cashflows simplificados para NTN-B:
-    - cupom fixo 'coupon_rate' (decimal ao ano) pago 'freq' vezes ao ano
-    - principal = 1 no vencimento
-    - ignora indexação ao IPCA (trabalho em termos REAIS)
+    Lê as taxas das NTN-B do arquivo govt_ya.v1.xlsx (sheet "ya_values_only").
+
+    Espera:
+      - Primeira coluna: data
+      - Demais colunas: IDs iguais aos do metadata
+        (ex: "BRSTNCNTB4U6 Corp").
     """
-    if pd.isna(maturity) or maturity <= obs_date:
-        return None
+    df = pd.read_excel(ya_path, sheet_name="ya_values_only")
 
-    # Datas de pagamento: freq vezes ao ano, último pagamento na maturity
-    cf_dates = []
-    current = maturity
+    # Normalizar nomes de colunas (manter exatamente o que vem do Excel,
+    # apenas strip de espaços e conversão para string)
+    df.columns = [str(c).strip() for c in df.columns]
 
-    while current > obs_date:
-        cf_dates.append(current)
-        # simplificação: ano civil / freq
-        current = current - pd.DateOffset(months=int(12 / max(freq, 1)))
+    # Primeira coluna = data
+    date_col = df.columns[0]
+    df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+    df = df.dropna(subset=[date_col]).set_index(date_col)
 
-    cf_dates = sorted(cf_dates)
-    if not cf_dates:
-        return None
+    # Manter apenas colunas que existem no índice de metadados
+    isin_list = list(isin_index)
+    cols = [c for c in df.columns if c in isin_list]
 
-    cashflows = []
-    for d in cf_dates:
-        # cupom simples (real)
-        cashflows.append(coupon_rate / freq)
+    # Subconjunto + conversão para numérico
+    df = df[cols].apply(pd.to_numeric, errors="coerce")
 
-    # principal no último pagamento
-    cashflows[-1] += 1.0
-
-    return pd.Series(cashflows, index=[d.date() for d in cf_dates])
+    return df
 
 
-# =====================================================================
-# 3. Curva real soberana para UMA data (bootstrapping NTNB + WLA)
-# =====================================================================
+# ------------------------------------------------------
+# 3. Construir curva real soberana para UMA data (NSS)
+# ------------------------------------------------------
 def build_real_curve_for_date(
     obs_date: pd.Timestamp,
     meta_df: pd.DataFrame,
@@ -96,76 +102,81 @@ def build_real_curve_for_date(
     wla_yield_func_for_date,
 ) -> CombinedRealCurve | None:
     """
-    Constrói curva soberana real via bootstrapping de cashflows NTN-B.
-    - Convenção: bus/252 (ANBIMA)
-    - Usa yields REAIS (ya_df) por 'id' (ex.: 'BRSTNCNTB4U6 Corp')
-    - Combina com WLA via CombinedRealCurve(t_switch=5.0)
-    """
+    Constrói a curva soberana REAL para uma data específica, usando:
 
-    # Garante que a data exista na matriz de yields NTN-B
-    if obs_date not in ya_df.index:
+      - Metadados de NTN-B (MATURITY por ID)
+      - Yields YA (linha de govt_ya.v1.xlsx para obs_date)
+      - wla_yield_func_for_date(obs_date, t): função que devolve WLA(t)
+        para a MESMA data
+
+    Abordagem:
+      1. Para cada NTN-B com yield disponível em obs_date:
+         - calcula tenor em anos (bus/252, ANBIMA)
+         - converte yield (%) em decimal
+      2. Ajusta uma curva NSS em termos de yield(t) sobre esses pontos (t, y)
+      3. Cria uma CombinedRealCurve que:
+         - usa WLA para tenores curtos (ex: até 5 anos)
+         - usa NSS de NTN-B para tenores longos (ex: > 5 anos)
+
+    Retorna CombinedRealCurve ou None se não houver dados suficientes.
+    """
+    if ya_df.empty or obs_date not in ya_df.index:
         return None
 
     row = ya_df.loc[obs_date]
 
-    cashflows = []
-    rates = []
+    t_list: list[float] = []
+    y_list: list[float] = []
 
-    for sec_id, y in row.items():
+    # Percorre todos os IDs do metadata (NTN-B) e coleta yields disponíveis
+    for isin in meta_df.index:
+        if isin not in row.index:
+            continue
+
+        y = row[isin]
         if pd.isna(y):
             continue
-        if sec_id not in meta_df.index:
+
+        mat = meta_df.loc[isin, "MATURITY"]
+        if pd.isna(mat):
             continue
 
-        meta = meta_df.loc[sec_id]
-        mat = meta["MATURITY"]
-        if pd.isna(mat) or mat <= obs_date:
-            continue
-
-        # cupom em decimal ao ano
-        cpn = float(meta.get("CPN", 0.0))
-        cpn = cpn / 100.0 if cpn is not None else 0.0
-
-        # frequência de cupom
-        freq = meta.get("CPN_FREQ", 2)
+        # Tenor em anos, convenção bus/252 (ANBIMA)
         try:
-            freq = int(freq) if not pd.isna(freq) else 2
+            t_years = DAYCOUNT_BUS252.tf(obs_date.to_pydatetime().date(), mat.date())
         except Exception:
-            freq = 2
-
-        cf = _build_cashflows_for_bond(obs_date, mat, cpn, freq)
-        if cf is None or cf.empty:
             continue
 
-        rate = float(y) / 100.0  # yield em decimal
+        if t_years <= 0:
+            continue
 
-        cashflows.append(cf)
-        rates.append(rate)
+        t_list.append(float(t_years))
+        # Yield é % a.a. real => converter para decimal
+        y_list.append(float(y) / 100.0)
 
-    # Poucos bonds válidos para bootstrapping → sem curva
-    if len(cashflows) < 2:
+    # Precisamos de pelo menos alguns pontos para ajustar NSS
+    if len(t_list) < 4:
         return None
 
-    # Bootstrapping da curva zero real
-    bootstrap = CurveBootstrap(
-        cash_flows=cashflows,
-        rates=rates,
-        day_count_convention="bus/252",
-        calendar="cdr_anbima",
-        ref_date=obs_date.date(),
-    )
+    t_arr = np.array(t_list, dtype=float)
+    y_arr = np.array(y_list, dtype=float)
 
-    # Função de zero-yield soberano real NTNB
-    def ntnb_zero_yield(t: float) -> float:
-        return bootstrap.rate_for_date(t)
+    # Ajuste NSS em termos de yield(t)
+    nss_curve = fit_nss_yield_curve(t_arr, y_arr)
 
-    # WLA(t) para esta data (curto prazo)
+    # Função WLA(t) para ESTA data
     def wla_func(t: float) -> float:
         return wla_yield_func_for_date(obs_date, t)
 
-    # Curva combinada final: WLA (0–5y) + NTNB bootstrapped (5y+)
-    return CombinedRealCurve(
+    # Função de yield da NSS de NTN-B para ESTA data
+    def ntnb_yield_func(t: float) -> float:
+        return nss_curve.yield_at(t)
+
+    # Curva combinada WLA (0–5y) + NTN-B (5y+)
+    combined = CombinedRealCurve(
         wla_func=wla_func,
-        model_curve=ntnb_zero_yield,
+        model_curve=ntnb_yield_func,
         t_switch=5.0,
     )
+
+    return combined
