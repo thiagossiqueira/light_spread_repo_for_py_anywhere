@@ -35,19 +35,37 @@ def load_ntnb_metadata(govt_path: str) -> pd.DataFrame:
 def load_ntnb_yields(ya_path: str, isin_list):
     """
     Lê as taxas das NTN-B do arquivo govt_ya.v1.xlsx (ya_values_only).
+    Normaliza colunas para garantir match com ISIN do metadata.
     """
     df = pd.read_excel(ya_path, sheet_name="ya_values_only")
 
-    # normalizar nomes de colunas (ISINs)
-    df.columns = [str(c).replace(" Corp", "").strip() for c in df.columns]
+    # Normalize column names:
+    new_cols = []
+    for c in df.columns:
+        c_str = str(c)
+        # remove " Corp" (any casing), trailing spaces, double spaces, parentheses, unicode oddities
+        c_str = c_str.replace("Corp", "")
+        c_str = c_str.replace("corp", "")
+        c_str = c_str.replace("CORP", "")
+        c_str = c_str.replace("  ", " ")
+        c_str = c_str.strip()
+        new_cols.append(c_str)
 
+    df.columns = new_cols
+
+    # First column = date
     date_col = df.columns[0]
     df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
     df = df.dropna(subset=[date_col]).set_index(date_col)
 
+    # Only keep columns that match metadata ISINs EXACTLY
     cols = [isin for isin in isin_list if isin in df.columns]
-    df = df[cols].apply(pd.to_numeric, errors="coerce")
 
+    # --- DEBUG ---
+    print("\n[DEBUG] YA columns after normalization:", df.columns.tolist()[:20])
+    print("[DEBUG] Matching columns:", cols)
+
+    df = df[cols].apply(pd.to_numeric, errors="coerce")
     return df
 
 
