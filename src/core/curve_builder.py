@@ -1,6 +1,7 @@
 # src/core/curve_builder.py
 
 import pandas as pd
+import numpy as np
 from src.utils.file_io import load_govt_bond_data, load_yield_surface
 from src.config import CONFIG
 from src.finmath.termstructure.ntnb_real_curve import (
