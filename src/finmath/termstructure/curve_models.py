@@ -407,3 +407,54 @@ class CurveBootstrap:
                 continue  # both given (warning issued earlier)
 
             self.zero_curve = new_curve
+
+# ======================================================================
+# Lightweight NSS (yield-based) used for NTNB real curve fitting
+# Reuses the same nss_func logic already used for CDS synthetic curve.
+# ======================================================================
+
+from scipy.optimize import curve_fit
+
+def nss_func(t, beta0, beta1, beta2, tau1, tau2):
+    """
+    Simplified NSS yield function (beta3 locked at zero).
+    Matches the existing implementation used in add_synthetic_cds_to_panel.py.
+    """
+    t = np.maximum(t, 1e-6)
+    term1 = (1 - np.exp(-t / tau1)) / (t / tau1)
+    term2 = term1 - np.exp(-t / tau1)
+    term3 = ((1 - np.exp(-t / tau2)) / (t / tau2)) - np.exp(-t / tau2)
+    return beta0 + beta1 * term1 + beta2 * term2 + 0.0 * term3
+
+
+def fit_nss_yield_curve(maturities, yields):
+    """
+    Fits NSS curve to observed NTNB yields.
+    Uses the same NSS structure as in add_synthetic_cds_to_panel.py.
+    """
+    maturities = np.asarray(maturities, dtype=float)
+    yields = np.asarray(yields, dtype=float)
+
+    # Initial guess
+    beta0 = yields[-1]
+    beta1 = yields[0] - beta0
+    beta2 = 0.0
+    tau1  = 2.0
+    tau2  = 4.0
+
+    p0 = [beta0, beta1, beta2, tau1, tau2]
+
+    params, _ = curve_fit(nss_func, maturities, yields, p0=p0, maxfev=20000)
+    return NSSYieldCurve(params)
+
+
+class NSSYieldCurve:
+    """
+    Parametric real-yield curve providing yield_at(t)
+    using the simplified NSS model.
+    """
+    def __init__(self, params):
+        self.params = params
+
+    def yield_at(self, t):
+        return float(nss_func(np.array([t]), *self.params)[0])
