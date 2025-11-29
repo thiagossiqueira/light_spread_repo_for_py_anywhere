@@ -53,10 +53,7 @@ def load_ntnb_yields(ya_path: str, isin_list):
     for c in df.columns:
         c_str = str(c)
         # remove " Corp" (any casing), trailing spaces, double spaces, parentheses, unicode oddities
-        c_str = c_str.replace("Corp", "")
-        c_str = c_str.replace("corp", "")
-        c_str = c_str.replace("CORP", "")
-        c_str = c_str.replace("  ", " ")
+        c_str = c_str.replace(" Corp", "")
         c_str = c_str.strip()
         new_cols.append(c_str)
 
