@@ -50,6 +50,14 @@ if __name__ == "__main__":
     # ============================================================
     ntnb_meta_df, ntnb_ya_df = load_real_curve_support()
 
+    print("NTNB metadata count:", len(ntnb_meta_df))
+    print(ntnb_meta_df.index.tolist()[:15])
+
+    print("NTNB YA columns:", len(ntnb_ya_df.columns))
+    print(ntnb_ya_df.columns.tolist()[:15])
+
+    print("Matching:", len(set(ntnb_meta_df.index) & set(ntnb_ya_df.columns)))
+
     # ============================================================
     # CORPORATE BONDS
     # ============================================================
