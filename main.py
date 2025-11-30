@@ -3,6 +3,8 @@
 import os
 import pandas as pd
 from calendars.daycounts import DayCounts
+import sys
+sys.stdout.reconfigure(encoding="utf-8")
 
 # --- Loaders ---
 from src.utils.filters import (
@@ -15,7 +17,6 @@ from src.utils.file_io import (
     load_govt_bond_data,
     load_yield_surface,
     load_di_surface,
-    load_ipca_surface,
 )
 from src.utils.interpolation import interpolate_di_surface, interpolate_surface
 from src.utils.plotting import (
@@ -23,15 +24,13 @@ from src.utils.plotting import (
 )
 from src.core.windowing import build_observation_windows
 from src.core.spread_calculator import compute_spreads, compute_spreads_ltn
+from src.config import CONFIG
+
+# REAL CURVE (WLA + NTNB)
 from src.core.curve_builder import (
     load_real_curve_support,
     build_real_curve_for_obs_date,
 )
-from src.config import CONFIG
-
-# Allow printing with accents
-import sys
-sys.stdout.reconfigure(encoding='utf-8')
 
 
 if __name__ == "__main__":
@@ -39,7 +38,7 @@ if __name__ == "__main__":
     os.makedirs("templates", exist_ok=True)
 
     # ============================================================
-    # LOAD REAL SOVEREIGN CURVE SUPPORT (NTNB metadata + YA)
+    # LOAD NTNB REAL CURVE SUPPORT (metadata + YA govt yields)
     # ============================================================
     ntnb_meta_df, ntnb_ya_df = load_real_curve_support()
 
@@ -58,7 +57,7 @@ if __name__ == "__main__":
         },
         "ipca": {
             "yields_ts": load_yield_surface(CONFIG["YA_PATH"]),
-            "surface": None,  # will be built using real curve
+            "surface": None,  # will be built via real curve
             "tenors": CONFIG["REAL_CURVE_TENORS"],
             "inflation_linked": "Y",
             "use_real_curve": True,
@@ -66,6 +65,7 @@ if __name__ == "__main__":
     }
 
     for tipo, params in universes.items():
+
         log_path = f"data/logs_{tipo}.txt"
         with open(log_path, "w", encoding="utf-8") as log_file:
 
@@ -80,7 +80,6 @@ if __name__ == "__main__":
             inflation_linked = params["inflation_linked"]
             use_real_curve = params["use_real_curve"]
 
-            # Filter valid corporate bonds
             corp_base = corp_base_raw.copy()
             corp_base = corp_base[corp_base["id"].isin(yields_ts.columns)]
 
@@ -89,7 +88,6 @@ if __name__ == "__main__":
             )
             print_fn(f"🧮 Bonds disponíveis após filtro ({tipo}): {len(corp_base)}")
 
-            # Build valid observation windows
             obs_windows = build_observation_windows(
                 corp_base, yields_ts, CONFIG["OBS_WINDOW"]
             )
@@ -98,22 +96,36 @@ if __name__ == "__main__":
             # BUILD SURFACE / YC TABLE
             # ============================================================
             if tipo == "di":
-                # Existing DI logic
                 surface = params["surface"]
                 yc_table = interpolate_di_surface(surface, tenors)
 
             else:
-                # Build REAL curve surface (0–30y)
+                # Build REAL curve surface (WLA + NTNB NSS)
                 surface_list = []
+
+                # Debug date counts
+                print("CORP IPCA → yields_ts dates:", len(yields_ts.index))
+                print("CORP IPCA → NTNB YA dates:", len(ntnb_ya_df.index))
+
                 common_dates = yields_ts.index.intersection(ntnb_ya_df.index)
+                print("CORP IPCA → Common dates:", len(common_dates))
+
+                # Cache real curves
+                real_curve_cache = {}
 
                 for obs_date in common_dates:
-                    real_curve = build_real_curve_for_obs_date(
-                        obs_date, ntnb_meta_df, ntnb_ya_df
-                    )
+
+                    # Cache lookup
+                    if obs_date not in real_curve_cache:
+                        real_curve_cache[obs_date] = build_real_curve_for_obs_date(
+                            obs_date, ntnb_meta_df, ntnb_ya_df
+                        )
+
+                    real_curve = real_curve_cache[obs_date]
                     if real_curve is None:
                         continue
 
+                    # build surface row for each tenor
                     for label, t in CONFIG["REAL_CURVE_TENORS"].items():
                         surface_list.append({
                             "obs_date": obs_date,
@@ -123,6 +135,7 @@ if __name__ == "__main__":
                         })
 
                 surface = pd.DataFrame(surface_list)
+
                 if surface.empty:
                     raise ValueError(
                         "❗ Real IPCA surface (corporate) is empty — check NTNB YA data."
@@ -142,7 +155,6 @@ if __name__ == "__main__":
             corp_bonds = anomaly_filtering_results(corp_bonds)
             print_fn(f"🧼 Após remover anomalias: {len(corp_bonds)}")
 
-            # Export Excel
             df_excel = corp_bonds[
                 ["id", "OBS_DATE", "YAS_BOND_YLD", "DI_YIELD", "SPREAD"]
             ].copy()
@@ -151,6 +163,7 @@ if __name__ == "__main__":
                 "Bond ID", "Obs Date", "Corp Yield (%)", "DI Yield (%)", "Spread (bp)"
             ]
             df_excel.to_excel(f"data/corp_bonds_{tipo}_summary.xlsx", index=False)
+
 
     # ============================================================
     # GOVERNMENT BONDS
@@ -182,6 +195,7 @@ if __name__ == "__main__":
     }
 
     for tipo, params in govt_universes.items():
+
         log_path = f"data/govt_logs_{tipo}.txt"
         with open(log_path, "w", encoding="utf-8") as log_file:
 
@@ -196,7 +210,6 @@ if __name__ == "__main__":
             use_real_curve = params["use_real_curve"]
             inflation_linked = params["inflation_linked"]
 
-            # Filter govt bonds
             govt_base = govt_base_raw.copy()
             govt_base = govt_base[govt_base["id"].isin(yields_ts.columns)]
 
@@ -208,9 +221,9 @@ if __name__ == "__main__":
             )
             print_fn(f"🧮 Bonds disponíveis após filtro ({tipo}): {len(govt_base)}")
 
-            # ------------------------------------------------------------
+            # ----------------------------------
             # LTN block (unchanged)
-            # ------------------------------------------------------------
+            # ----------------------------------
             if tipo == "ltn":
                 yc_table = interpolate_di_surface(
                     load_di_surface(CONFIG["HIST_CURVE_PATH"]), tenors
@@ -221,17 +234,21 @@ if __name__ == "__main__":
                     continue
 
                 govt_bonds_list = []
+
                 for bond_id in govt_base["id"].unique():
                     if bond_id not in yields_ts.columns:
                         continue
+
                     subset = pd.DataFrame({
                         "id": bond_id,
                         "OBS_DATE": yields_ts.index,
                         "YAS_BOND_YLD": yields_ts[bond_id],
                     })
+
                     subset = subset.merge(
                         govt_base[["id", "MATURITY"]], on="id", how="left"
                     )
+
                     govt_bonds_list.append(subset)
 
                 if not govt_bonds_list:
@@ -248,20 +265,34 @@ if __name__ == "__main__":
                 df_excel.columns = [
                     "Bond ID", "Obs Date", "Govt Yield (%)", "DI Yield (%)", "Spread (bp)"
                 ]
+
                 df_excel.to_excel("data/govt_bonds_ltn_summary.xlsx", index=False)
                 continue
 
-            # ------------------------------------------------------------
-            # IPCA (NTNB) using real curve
-            # ------------------------------------------------------------
+            # ----------------------------------
+            # GOVERNMENT IPCA (NTNB)
+            # ----------------------------------
             if tipo == "ipca":
                 surface_list = []
+
+                # Debug date counts
+                print("GOVT IPCA → yields_ts dates:", len(yields_ts.index))
+                print("GOVT IPCA → NTNB YA dates:", len(ntnb_ya_df.index))
+
                 common_dates = yields_ts.index.intersection(ntnb_ya_df.index)
+                print("GOVT IPCA → Common dates:", len(common_dates))
+
+                # Cache curves
+                real_curve_cache = {}
 
                 for obs_date in common_dates:
-                    real_curve = build_real_curve_for_obs_date(
-                        obs_date, ntnb_meta_df, ntnb_ya_df
-                    )
+
+                    if obs_date not in real_curve_cache:
+                        real_curve_cache[obs_date] = build_real_curve_for_obs_date(
+                            obs_date, ntnb_meta_df, ntnb_ya_df
+                        )
+
+                    real_curve = real_curve_cache[obs_date]
                     if real_curve is None:
                         continue
 
@@ -283,11 +314,13 @@ if __name__ == "__main__":
                 yc_table = interpolate_surface(surface, tenors)
 
                 govt_bonds, skipped = compute_spreads(
-                    govt_base, yields_ts, yc_table,
+                    govt_base,
+                    yields_ts,
+                    yc_table,
                     build_observation_windows(
                         govt_base, yields_ts, CONFIG["OBS_WINDOW"]
                     ),
-                    tenors
+                    tenors,
                 )
 
                 govt_bonds = anomaly_filtering_results(govt_bonds)
@@ -297,23 +330,24 @@ if __name__ == "__main__":
                 ].copy()
 
                 df_excel.columns = [
-                    "Bond ID", "Obs Date", "Govt Yield (%)", "DI Yield(%)", "Spread (bp)"
+                    "Bond ID", "Obs Date", "Govt Yield (%)", "DI Yield (%)", "Spread (bp)"
                 ]
-
                 df_excel.to_excel("data/govt_bonds_ipca_summary.xlsx", index=False)
-                continue  # skip default logic
+                continue
 
-            # ------------------------------------------------------------
-            # DI block (unchanged)
-            # ------------------------------------------------------------
+            # ----------------------------------
+            # Government DI (unchanged)
+            # ----------------------------------
             yc_table = interpolate_di_surface(
                 load_di_surface(CONFIG["HIST_CURVE_PATH"]), tenors
             )
 
             govt_bonds, skipped = compute_spreads(
-                govt_base, yields_ts, yc_table,
+                govt_base,
+                yields_ts,
+                yc_table,
                 build_observation_windows(govt_base, yields_ts, CONFIG["OBS_WINDOW"]),
-                tenors
+                tenors,
             )
 
             govt_bonds = anomaly_filtering_results(govt_bonds)
@@ -323,13 +357,14 @@ if __name__ == "__main__":
             ].copy()
 
             df_excel.columns = [
-                "Bond ID","Obs Date","Govt Yield (%)","DI Yield (%)","Spread (bp)"
+                "Bond ID", "Obs Date", "Govt Yield (%)", "DI Yield (%)", "Spread (bp)"
             ]
 
             df_excel.to_excel(f"data/govt_bonds_{tipo}_summary.xlsx", index=False)
 
+
     # ============================================================
-    # MERGE FINAL: LTN + NTNF + NTNB
+    # MERGE FINAL BENCHMARK TABLE
     # ============================================================
     df_di = pd.read_excel("data/govt_bonds_di_summary.xlsx")
     df_ipca = pd.read_excel("data/govt_bonds_ipca_summary.xlsx")
@@ -341,9 +376,9 @@ if __name__ == "__main__":
 
     govt_all = pd.concat([df_ltn, df_di, df_ipca], ignore_index=True)
 
-    # Add maturity & DU/252
-    govt_data = load_govt_bond_data(CONFIG["GOVT_PATH"])[["id","MATURITY"]]
+    govt_data = load_govt_bond_data(CONFIG["GOVT_PATH"])[["id", "MATURITY"]]
     govt_all = govt_all.merge(govt_data, left_on="Bond ID", right_on="id", how="left")
+
     govt_all["Maturity"] = govt_all["MATURITY"]
     govt_all.drop(columns=["MATURITY", "id"], inplace=True)
 
@@ -351,14 +386,17 @@ if __name__ == "__main__":
 
     govt_all["Days to Maturity"] = govt_all.apply(
         lambda r: DAYCOUNT.days(r["Obs Date"], r["Maturity"]) / 252
-        if pd.notna(r["Obs Date"]) and pd.notna(r["Maturity"]) else None,
-        axis=1
+        if pd.notna(r["Obs Date"]) and pd.notna(r["Maturity"])
+        else None,
+        axis=1,
     )
 
     govt_all.to_excel("data/govt_bonds_all_consolidated.xlsx", index=False)
 
-    # Benchmarks table
-    benchmarks = govt_all[["Bond ID", "TYPE", "Maturity", "Days to Maturity"]].drop_duplicates()
+    benchmarks = govt_all[
+        ["Bond ID", "TYPE", "Maturity", "Days to Maturity"]
+    ].drop_duplicates()
+
     benchmarks.to_excel("data/govt_benchmark_summary_table.xlsx", index=False)
 
     html_output = show_benchmark_table(benchmarks)
