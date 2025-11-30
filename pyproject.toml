@@ -22,7 +22,8 @@ dependencies = [
     "pytest>=6.0",
     "flask>=2.0",
     "matplotlib>=3.0",
-    "XlsxWriter>=3.0.0"
+    "XlsxWriter>=3.0.0",
+    "tqdm>=4.66"
 ]
 
 [tool.setuptools]

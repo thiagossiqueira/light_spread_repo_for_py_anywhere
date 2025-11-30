@@ -6,6 +6,9 @@ from calendars.daycounts import DayCounts
 import sys
 sys.stdout.reconfigure(encoding="utf-8")
 
+# --- NEW: progress bar ---
+from tqdm import tqdm
+
 # --- Loaders ---
 from src.utils.filters import (
     filter_corporate_universe,
@@ -57,7 +60,7 @@ if __name__ == "__main__":
         },
         "ipca": {
             "yields_ts": load_yield_surface(CONFIG["YA_PATH"]),
-            "surface": None,  # will be built via real curve
+            "surface": None,  # built via real curve
             "tenors": CONFIG["REAL_CURVE_TENORS"],
             "inflation_linked": "Y",
             "use_real_curve": True,
@@ -100,22 +103,19 @@ if __name__ == "__main__":
                 yc_table = interpolate_di_surface(surface, tenors)
 
             else:
-                # Build REAL curve surface (WLA + NTNB NSS)
                 surface_list = []
 
-                # Debug date counts
                 print("CORP IPCA → yields_ts dates:", len(yields_ts.index))
                 print("CORP IPCA → NTNB YA dates:", len(ntnb_ya_df.index))
 
                 common_dates = yields_ts.index.intersection(ntnb_ya_df.index)
                 print("CORP IPCA → Common dates:", len(common_dates))
 
-                # Cache real curves
                 real_curve_cache = {}
 
-                for obs_date in common_dates:
+                # --- TQDM PROGRESS BAR HERE ---
+                for obs_date in tqdm(common_dates, desc="Corporate IPCA Real Curve"):
 
-                    # Cache lookup
                     if obs_date not in real_curve_cache:
                         real_curve_cache[obs_date] = build_real_curve_for_obs_date(
                             obs_date, ntnb_meta_df, ntnb_ya_df
@@ -125,7 +125,6 @@ if __name__ == "__main__":
                     if real_curve is None:
                         continue
 
-                    # build surface row for each tenor
                     for label, t in CONFIG["REAL_CURVE_TENORS"].items():
                         surface_list.append({
                             "obs_date": obs_date,
@@ -150,7 +149,9 @@ if __name__ == "__main__":
                 corp_base, yields_ts, yc_table, obs_windows, tenors
             )
 
-            print_fn(f"🧮 Spreads calculados ({tipo.upper()}): {len(corp_bonds)} | Ignorados: {len(skipped)}")
+            print_fn(
+                f"🧮 Spreads calculados ({tipo.upper()}): {len(corp_bonds)} | Ignorados: {len(skipped)}"
+            )
 
             corp_bonds = anomaly_filtering_results(corp_bonds)
             print_fn(f"🧼 Após remover anomalias: {len(corp_bonds)}")
@@ -163,7 +164,6 @@ if __name__ == "__main__":
                 "Bond ID", "Obs Date", "Corp Yield (%)", "DI Yield (%)", "Spread (bp)"
             ]
             df_excel.to_excel(f"data/corp_bonds_{tipo}_summary.xlsx", index=False)
-
 
     # ============================================================
     # GOVERNMENT BONDS
@@ -221,9 +221,6 @@ if __name__ == "__main__":
             )
             print_fn(f"🧮 Bonds disponíveis após filtro ({tipo}): {len(govt_base)}")
 
-            # ----------------------------------
-            # LTN block (unchanged)
-            # ----------------------------------
             if tipo == "ltn":
                 yc_table = interpolate_di_surface(
                     load_di_surface(CONFIG["HIST_CURVE_PATH"]), tenors
@@ -269,23 +266,20 @@ if __name__ == "__main__":
                 df_excel.to_excel("data/govt_bonds_ltn_summary.xlsx", index=False)
                 continue
 
-            # ----------------------------------
-            # GOVERNMENT IPCA (NTNB)
-            # ----------------------------------
+            # GOVERNMENT NTNB (REAL CURVE)
             if tipo == "ipca":
                 surface_list = []
 
-                # Debug date counts
                 print("GOVT IPCA → yields_ts dates:", len(yields_ts.index))
                 print("GOVT IPCA → NTNB YA dates:", len(ntnb_ya_df.index))
 
                 common_dates = yields_ts.index.intersection(ntnb_ya_df.index)
                 print("GOVT IPCA → Common dates:", len(common_dates))
 
-                # Cache curves
                 real_curve_cache = {}
 
-                for obs_date in common_dates:
+                # --- TQDM PROGRESS BAR HERE ---
+                for obs_date in tqdm(common_dates, desc="Govt IPCA Real Curve"):
 
                     if obs_date not in real_curve_cache:
                         real_curve_cache[obs_date] = build_real_curve_for_obs_date(
@@ -335,9 +329,7 @@ if __name__ == "__main__":
                 df_excel.to_excel("data/govt_bonds_ipca_summary.xlsx", index=False)
                 continue
 
-            # ----------------------------------
-            # Government DI (unchanged)
-            # ----------------------------------
+            # DI (NTNF)
             yc_table = interpolate_di_surface(
                 load_di_surface(CONFIG["HIST_CURVE_PATH"]), tenors
             )
@@ -361,7 +353,6 @@ if __name__ == "__main__":
             ]
 
             df_excel.to_excel(f"data/govt_bonds_{tipo}_summary.xlsx", index=False)
-
 
     # ============================================================
     # MERGE FINAL BENCHMARK TABLE
