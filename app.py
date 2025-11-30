@@ -204,6 +204,70 @@ def panel_cds_download():
         return "❌ Archivo panel_data_with_cds.xlsx no encontrado.", 404
 
 
+@app.route("/surface/wla_ntnb")
+def surface_wla_ntnb():
+
+    corp_path = "data/real_curve_surface_corp.xlsx"
+    govt_path = "data/real_curve_surface_govt.xlsx"
+
+    if not (os.path.exists(corp_path) or os.path.exists(govt_path)):
+        return "Surface WLA+NTNB ainda não foi gerada. Execute main.py.", 500
+
+    frames = []
+    if os.path.exists(corp_path):
+        frames.append(pd.read_excel(corp_path))
+    if os.path.exists(govt_path):
+        frames.append(pd.read_excel(govt_path))
+
+    df = pd.concat(frames, ignore_index=True)
+
+    # pivot
+    pivot = df.pivot_table(
+        index="obs_date",
+        columns="tenor",
+        values="yield",
+        aggfunc="mean"
+    ).sort_index()
+
+    # Output JSON for plotly
+    surface_json = pivot.reset_index().to_dict(orient="records")
+
+    # Separate corp/gov if desired for UI toggles
+    corp_json = (
+        pd.read_excel(corp_path).pivot_table(index="obs_date", columns="tenor", values="yield", aggfunc="mean")
+        if os.path.exists(corp_path) else pd.DataFrame()
+    )
+    corp_json = corp_json.reset_index().to_dict(orient="records")
+
+    govt_json = (
+        pd.read_excel(govt_path).pivot_table(index="obs_date", columns="tenor", values="yield", aggfunc="mean")
+        if os.path.exists(govt_path) else pd.DataFrame()
+    )
+    govt_json = govt_json.reset_index().to_dict(orient="records")
+
+    # build curves for matching display
+    wla_t = sorted([t for t in CONFIG["WLA_TENORS"].values()])
+    ntnb_t = sorted([t for t in CONFIG["REAL_CURVE_TENORS"].values() if t >= 5])
+
+    # Use last available date
+    last_date = pivot.index.max()
+
+    wla_row = pivot.loc[last_date, wla_t].tolist()
+    ntnb_row = pivot.loc[last_date, ntnb_t].tolist()
+
+    combined_t = sorted(CONFIG["REAL_CURVE_TENORS"].values())
+    combined_row = pivot.loc[last_date, combined_t].tolist()
+
+    return render_template(
+        "surface_real_ipca.html",
+        surface_json=surface_json,
+        corp_json=corp_json,
+        govt_json=govt_json,
+        wla_json={"tenors": wla_t, "yields": wla_row},
+        ntnb_json={"tenors": ntnb_t, "yields": ntnb_row},
+        combined_json={"tenors": combined_t, "yields": combined_row},
+    )
+
 
 if __name__ == "__main__":
     app.run(debug=True)
