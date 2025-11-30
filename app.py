@@ -6,6 +6,7 @@ import os
 
 from datetime import datetime
 from markupsafe import Markup
+from src.config import CONFIG
 
 
 app = Flask(__name__, template_folder="templates")
