@@ -430,117 +430,145 @@ def nss_func(t, beta0, beta1, beta2, tau1, tau2):
 # ---------------------------------------------------------------------------
 # Robust NSS yield-curve fit (for NTNB real curve etc.)
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Robust NSS yield-curve fit (Option D: bounds + safeguards + fallbacks)
+# ---------------------------------------------------------------------------
 
 def fit_nss_yield_curve(maturities: np.ndarray, yields: np.ndarray):
     """
-    Ajusta uma curva NSS simples em termos de yield(t).
+    Production-grade NSS fitting with:
+        - bounds on parameters (beta0, beta1, beta2, tau1, tau2)
+        - safe exponentials (no overflow/underflow)
+        - clipping to realistic real-yield ranges (-10% to +30%)
+        - protection against complex numbers
+        - fallback to flat curve when fitting fails
 
-    Entradas:
-      - maturities: array de tenores (anos, float)
-      - yields: array de yields em decimal (ex: 0.06 = 6% a.a.)
-
-    Comportamento robusto:
-      - remove NaN / inf
-      - exige >= 4 pontos e alguma variância
-      - tenta curve_fit
-      - se não conseguir, cai num fallback de curva flat (constante).
+    ALWAYS returns an object with .yield_at(t) -> float
     """
 
-    # ------- limpeza básica -------
     maturities = np.asarray(maturities, dtype=float)
     yields = np.asarray(yields, dtype=float)
 
-    mask = np.isfinite(maturities) & np.isfinite(yields)
+    # -----------------------------------------------
+    # 1. Clean inputs
+    # -----------------------------------------------
+    mask = np.isfinite(maturities) & np.isfinite(yields) & (maturities > 0)
     maturities = maturities[mask]
     yields = yields[mask]
 
-    # garantir tenores positivos
-    mask_pos = maturities > 0.0
-    maturities = maturities[mask_pos]
-    yields = yields[mask_pos]
-
     if len(maturities) < 4:
-        # poucos pontos: usa curva flat
-        y_flat = float(np.nanmean(yields)) if len(yields) > 0 else 0.0
+        y_flat = float(np.nanmean(yields)) if len(yields) else 0.0
         return _FlatNSSCurve(y_flat)
 
-    if np.nanstd(yields) < 1e-5:
-        # curva quase flat: não vale a pena otimizar
+    # -----------------------------------------------
+    # 2. Variance test (if too flat, skip NSS)
+    # -----------------------------------------------
+    y_std = np.nanstd(yields)
+    if y_std < 1e-5:
         y_flat = float(np.nanmean(yields))
         return _FlatNSSCurve(y_flat)
 
-    # ------- definição NSS "clássica" -------
-    def nss_func(t, beta0, beta1, beta2, tau1, tau2):
-        t = np.maximum(t, 1e-6)
-        term1 = (1 - np.exp(-t / tau1)) / (t / tau1)
-        term2 = term1 - np.exp(-t / tau1)
-        term3 = ((1 - np.exp(-t / tau2)) / (t / tau2)) - np.exp(-t / tau2)
-        return beta0 + beta1 * term1 + beta2 * term2 + 0.0 * term3  # NSS simplificada
+    # -----------------------------------------------
+    # 3. Safe NSS functional form
+    # -----------------------------------------------
+    def safe_nss_func(t, beta0, beta1, beta2, tau1, tau2):
+        t = np.maximum(np.asarray(t), 1e-6)
+        tau1 = np.maximum(tau1, 1e-4)
+        tau2 = np.maximum(tau2, 1e-4)
 
-    # chute inicial razoável
+        x1 = t / tau1
+        x2 = t / tau2
+
+        # safe exponentials
+        x1 = np.clip(x1, -700, 700)
+        x2 = np.clip(x2, -700, 700)
+
+        term1 = (1 - np.exp(-x1)) / x1
+        term2 = term1 - np.exp(-x1)
+        term3 = ((1 - np.exp(-x2)) / x2) - np.exp(-x2)
+
+        y = beta0 + beta1 * term1 + beta2 * term2
+
+        # if imaginary numbers appear, return real part
+        if np.iscomplexobj(y):
+            y = np.real(y)
+
+        # clip to plausible real yields
+        return np.clip(y, -0.10, 0.30)
+
+    # -----------------------------------------------
+    # 4. Bounded curve_fit
+    # -----------------------------------------------
     beta0_0 = float(np.nanmean(yields))
-    beta1_0 = 0.0
-    beta2_0 = 0.0
-    tau1_0 = 2.0
-    tau2_0 = 5.0
-    p0 = [beta0_0, beta1_0, beta2_0, tau1_0, tau2_0]
+    p0 = [beta0_0, 0.0, 0.0, 2.0, 8.0]
+
+    bounds = (
+        [-0.10, -0.30, -0.30, 1e-4, 1e-4],  # lower
+        [ 0.30,  0.30,  0.30, 50.0, 50.0],  # upper
+    )
 
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", category=RuntimeWarning)
             warnings.simplefilter("ignore", category=opt.OptimizeWarning)
 
-            params, _ = curve_fit(
-                nss_func,
+            params, _ = opt.curve_fit(
+                safe_nss_func,
                 maturities,
                 yields,
                 p0=p0,
+                bounds=bounds,
                 maxfev=20000,
             )
     except Exception:
-        # falhou a otimização → curva flat
         return _FlatNSSCurve(beta0_0)
 
     beta0, beta1, beta2, tau1, tau2 = params
 
-    class _NSSYieldCurve:
+    # -----------------------------------------------
+    # 5. Robust curve object
+    # -----------------------------------------------
+    class _RobustNSSYieldCurve:
         def __init__(self, b0, b1, b2, t1, t2):
             self.b0 = float(b0)
             self.b1 = float(b1)
             self.b2 = float(b2)
-            self.t1 = float(t1)
-            self.t2 = float(t2)
+            self.t1 = float(max(t1, 1e-4))
+            self.t2 = float(max(t2, 1e-4))
 
         def yield_at(self, t: float) -> float:
             t = max(float(t), 1e-6)
-            term1 = (1 - np.exp(-t / self.t1)) / (t / self.t1)
-            term2 = term1 - np.exp(-t / self.t1)
-            term3 = ((1 - np.exp(-t / self.t2)) / (t / self.t2)) - np.exp(-t / self.t2)
-            return self.b0 + self.b1 * term1 + self.b2 * term2 + 0.0 * term3
 
-    return _NSSYieldCurve(beta0, beta1, beta2, tau1, tau2)
+            x1 = t / self.t1
+            x2 = t / self.t2
 
+            x1 = np.clip(x1, -700, 700)
+            x2 = np.clip(x2, -700, 700)
+
+            term1 = (1 - np.exp(-x1)) / x1
+            term2 = term1 - np.exp(-x1)
+            term3 = ((1 - np.exp(-x2)) / x2) - np.exp(-x2)
+
+            y = self.b0 + self.b1 * term1 + self.b2 * term2
+
+            if np.iscomplexobj(y):
+                y = np.real(y)
+
+            return float(np.clip(y, -0.10, 0.30))
+
+    return _RobustNSSYieldCurve(beta0, beta1, beta2, tau1, tau2)
+
+
+# ---------------------------------------------------------------------------
+# Flat curve fallback
+# ---------------------------------------------------------------------------
 
 class _FlatNSSCurve:
     """
-    Fallback simples: curva flat (mesmo yield para todos os tenores).
-    Implementa a mesma interface mínima de .yield_at(t) usada no resto do código.
+    Safe fallback: constant yield curve.
     """
-
     def __init__(self, y_flat: float):
         self.y_flat = float(y_flat)
 
     def yield_at(self, t: float) -> float:
-        return self.y_flat
-
-
-class NSSYieldCurve:
-    """
-    Parametric real-yield curve providing yield_at(t)
-    using the simplified NSS model.
-    """
-    def __init__(self, params):
-        self.params = params
-
-    def yield_at(self, t):
-        return float(nss_func(np.array([t]), *self.params)[0])
+        return float(self.y_flat)
