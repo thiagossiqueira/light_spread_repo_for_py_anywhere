@@ -214,8 +214,9 @@ def surface_wla_ntnb():
     corp_path = "data/real_curve_surface_corp.xlsx"
     govt_path = "data/real_curve_surface_govt.xlsx"
 
+    # Make sure at least one exists
     if not (os.path.exists(corp_path) or os.path.exists(govt_path)):
-        return "Surface WLA+NTNB ainda não gerada. Execute main.py.", 500
+        return "Surface WLA+NTNB not generated. Run main.py.", 500
 
     frames = []
     if os.path.exists(corp_path):
@@ -223,60 +224,61 @@ def surface_wla_ntnb():
     if os.path.exists(govt_path):
         frames.append(pd.read_excel(govt_path))
 
-    df = pd.concat(frames, ignore_index=True)
+    df_all = pd.concat(frames, ignore_index=True)
 
-    # Pivot for NTNB portion only (>= 5 years)
-    pivot = df.pivot_table(
+    # ---- FIX 1: Ensure tenor is string for JSON keys ----
+    df_all["tenor_str"] = df_all["tenor"].astype(str)
+
+    pivot = df_all.pivot_table(
         index="obs_date",
-        columns="tenor",
+        columns="tenor_str",
         values="yield",
         aggfunc="mean"
     ).sort_index()
 
-    surface_json = pivot.reset_index().to_dict(orient="records")
+    # ---- FIX 2: Convert pivot to JSON-safe structure ----
+    pivot_reset = pivot.reset_index()
+    surface_json = pivot_reset.to_dict(orient="records")
 
-    # ---- Build separate corp/gov pivots ----
-    corp_json = []
-    if os.path.exists(corp_path):
-        df_c = pd.read_excel(corp_path)
-        corp_json = df_c.pivot_table(
+    # ---- separate corp/gov pivots (optional) ----
+    def load_surface(path):
+        if not os.path.exists(path):
+            return []
+        d = pd.read_excel(path)
+        d["tenor_str"] = d["tenor"].astype(str)
+        p = d.pivot_table(
             index="obs_date",
-            columns="tenor",
+            columns="tenor_str",
             values="yield",
             aggfunc="mean"
-        ).reset_index().to_dict(orient="records")
+        ).reset_index()
+        return p.to_dict(orient="records")
 
-    govt_json = []
-    if os.path.exists(govt_path):
-        df_g = pd.read_excel(govt_path)
-        govt_json = df_g.pivot_table(
-            index="obs_date",
-            columns="tenor",
-            values="yield",
-            aggfunc="mean"
-        ).reset_index().to_dict(orient="records")
+    corp_json = load_surface(corp_path)
+    govt_json = load_surface(govt_path)
 
-    # ---- MATCHING 5-YEAR SECTION ----
+    # -----------------------------------------------------
+    # MATCHING 5 YEARS
+    # -----------------------------------------------------
 
-    # Load WLA short curve directly
+    # Load WLA
     wla_surface = load_ipca_surface(CONFIG["WLA_CURVE_PATH"])
     wla_yc = interpolate_surface(wla_surface, CONFIG["WLA_TENORS"])
+    last_wla = wla_yc.index.max()
 
-    last_date_wla = wla_yc.index.max()
-    wla_row_series = wla_yc.loc[last_date_wla]
-
-    # Convert WLA labels to numeric
-    wla_tenors = sorted(CONFIG["WLA_TENORS"].values())
+    # WLA yields
+    wla_tenors = [float(v) for v in CONFIG["WLA_TENORS"].values()]
     wla_yields = []
-    for label, years in CONFIG["WLA_TENORS"].items():
-        wla_yields.append(float(wla_row_series[label]))
+    wla_row = wla_yc.loc[last_wla]
+    for label in CONFIG["WLA_TENORS"]:
+        wla_yields.append(float(wla_row[label]))
 
-    # NTNB part (from pivot)
-    last_date_ntnb = pivot.index.max()
-    ntnb_tenors = sorted([t for t in pivot.columns if t >= 5])
-    ntnb_yields = pivot.loc[last_date_ntnb, ntnb_tenors].tolist()
+    # NTNB long end
+    last_ntnb = pivot.index.max()
+    ntnb_tenors = sorted([float(t) for t in pivot.columns.astype(float) if float(t) >= 5])
+    ntnb_yields = pivot.loc[last_ntnb, [str(t) for t in ntnb_tenors]].tolist()
 
-    # Combined curve: WLA short + NTNB long
+    # Combined
     combined_tenors = wla_tenors + ntnb_tenors
     combined_yields = wla_yields + ntnb_yields
 
