@@ -217,38 +217,48 @@ def panel_cds_download():
 # ---------------------------------------------------------
 @app.route("/data/wla_ntnb")
 def data_wla_ntnb():
-    path = "data/real_curve_surface_all.xlsx"
+    """Return WLA+NTNB surface as a clean HTML table (like /sov-benchmark-summary)."""
+    path = "data/wla_ntnb_surface.xlsx"
+
     if not os.path.exists(path):
-        return jsonify({"error": "file not found"}), 404
+        return "<h3>❗ Surface not generated yet. Run main.py.</h3>", 500
 
     df = pd.read_excel(path)
-    df["obs_date"] = df["obs_date"].astype(str)
-    df["tenor"] = pd.to_numeric(df["tenor"], errors="coerce")
 
-    df = df.dropna(subset=["tenor"])
+    # Expect pivot-style data: obs_date + tenor columns (as strings)
+    if "obs_date" not in df.columns:
+        return "<h3>❗ Invalid file: missing obs_date column.</h3>", 500
 
-    pivot = (
-        df.pivot_table(
-            index="obs_date",
-            columns="tenor",
-            values="yield",
-            aggfunc="mean",
-        )
-        .sort_index()
+    # ---- Identify tenor columns ----
+    tenor_cols = []
+    for c in df.columns:
+        if c == "obs_date":
+            continue
+        try:
+            float(c)
+            tenor_cols.append(c)
+        except:
+            continue
+
+    # ---- Sort tenor columns numerically ----
+    tenor_cols_sorted = sorted(tenor_cols, key=lambda x: float(x))
+
+    # ---- Reorder columns ----
+    df = df[["obs_date"] + tenor_cols_sorted]
+
+    # ---- Format table ----
+    html_table = df.to_html(
+        index=False,
+        border=0,
+        classes="table table-striped table-hover table-sm"
     )
 
-    pivot = pivot.reindex(sorted(pivot.columns), axis=1)
+    return (
+        f"<h2>WLA + NTNB Real Surface</h2>"
+        f"<p>Sorted tenor columns: {', '.join(tenor_cols_sorted)}</p>"
+        + html_table
+    )
 
-    # JSON format
-    out = []
-    for obs, row in pivot.iterrows():
-        entry = {"obs_date": obs}
-        for col in pivot.columns:
-            v = row[col]
-            entry[str(col)] = None if pd.isna(v) else float(v)
-        out.append(entry)
-
-    return jsonify(out)
 
 
 if __name__ == "__main__":
