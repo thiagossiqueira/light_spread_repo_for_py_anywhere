@@ -217,49 +217,47 @@ def panel_cds_download():
 # ---------------------------------------------------------
 @app.route("/data/wla_ntnb")
 def data_wla_ntnb():
-    """Return WLA+NTNB surface as a clean HTML table (like /sov-benchmark-summary)."""
-    path = "data/wla_ntnb_surface.xlsx"
-
+    path = "data/real_curve_surface_govt.xlsx"
     if not os.path.exists(path):
-        return "<h3>❗ Surface not generated yet. Run main.py.</h3>", 500
+        return "Arquivo real_curve_surface_govt.xlsx não encontrado. Rode main.py.", 500
 
     df = pd.read_excel(path)
 
-    # Expect pivot-style data: obs_date + tenor columns (as strings)
-    if "obs_date" not in df.columns:
-        return "<h3>❗ Invalid file: missing obs_date column.</h3>", 500
+    # ensure expected columns
+    if not {"obs_date", "tenor", "yield"}.issubset(df.columns):
+        return "Arquivo inválido. Esperado colunas: obs_date, tenor, yield.", 500
 
-    # ---- Identify tenor columns ----
-    tenor_cols = []
-    for c in df.columns:
-        if c == "obs_date":
-            continue
-        try:
-            float(c)
-            tenor_cols.append(c)
-        except:
-            continue
+    df["obs_date"] = pd.to_datetime(df["obs_date"], errors="coerce")
+    df["tenor"] = pd.to_numeric(df["tenor"], errors="coerce")
 
-    # ---- Sort tenor columns numerically ----
-    tenor_cols_sorted = sorted(tenor_cols, key=lambda x: float(x))
+    df = df.dropna(subset=["obs_date", "tenor", "yield"])
 
-    # ---- Reorder columns ----
-    df = df[["obs_date"] + tenor_cols_sorted]
+    # pivot tenor → columns
+    pivot = df.pivot_table(
+        index="obs_date",
+        columns="tenor",
+        values="yield",
+        aggfunc="mean"
+    ).sort_index()
 
-    # ---- Format table ----
-    html_table = df.to_html(
-        index=False,
-        border=0,
-        classes="table table-striped table-hover table-sm"
-    )
+    # sort tenor columns numerically
+    tenor_cols_sorted = sorted(pivot.columns.tolist())
 
-    return (
-        f"<h2>WLA + NTNB Real Surface</h2>"
-        f"<p>Sorted tenor columns: {', '.join(tenor_cols_sorted)}</p>"
-        + html_table
-    )
+    # rename columns as strings
+    pivot.columns = [str(c) for c in tenor_cols_sorted]
 
+    # convert index to string for JSON purposes
+    out = [
+        {"obs_date": str(idx), **{str(col): float(val) for col, val in row.items()}}
+        for idx, row in pivot.iterrows()
+    ]
 
+    # also display a small debug HTML table
+    html = "<h3>WLA + NTNB Surface Data</h3>"
+    html += f"<p>Tenor columns detected: {', '.join(str(t) for t in tenor_cols_sorted)}</p>"
+    html += pivot.tail(20).round(4).to_html(classes='table table-striped')
+
+    return html
 
 if __name__ == "__main__":
     app.run(debug=True)
