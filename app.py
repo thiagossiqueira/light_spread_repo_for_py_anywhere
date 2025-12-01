@@ -209,30 +209,35 @@ def panel_cds_download():
     except FileNotFoundError:
         return "❌ Archivo panel_data_with_cds.xlsx no encontrado.", 404
 
-
 @app.route("/surface/wla_ntnb")
-def surface_wla_ntnb():
+def surface_wla_ntnb_page():
+    return send_file("templates/wla_ntnb_surface.html")
 
 
-    corp_path = "data/real_curve_surface_corp.xlsx"
-    govt_path = "data/real_curve_surface_govt.xlsx"
+@app.route("/data/wla_ntnb")
+def data_wla_ntnb():
+    import pandas as pd
+    import numpy as np
 
-    if not (os.path.exists(corp_path) or os.path.exists(govt_path)):
-        return "Surface not generated. Run main.py.", 500
+    path_corp = "data/real_curve_surface_corp.xlsx"
+    path_govt = "data/real_curve_surface_govt.xlsx"
+
+    if not (os.path.exists(path_corp) or os.path.exists(path_govt)):
+        return {"error": "Real curve files not found. Run main.py first."}, 500
 
     frames = []
-    if os.path.exists(corp_path):
-        frames.append(pd.read_excel(corp_path))
-    if os.path.exists(govt_path):
-        frames.append(pd.read_excel(govt_path))
+    if os.path.exists(path_corp):
+        frames.append(pd.read_excel(path_corp))
+    if os.path.exists(path_govt):
+        frames.append(pd.read_excel(path_govt))
 
     df = pd.concat(frames, ignore_index=True)
 
-    # Ensure tenor numeric
+    # garantir tenor numérico
     df["tenor"] = pd.to_numeric(df["tenor"], errors="coerce")
     df = df.dropna(subset=["tenor"])
 
-    # PIVOT EXACTLY LIKE /surface/ipca
+    # pivot padrão (mesmo que surface/ipca)
     pivot = df.pivot_table(
         index="obs_date",
         columns="tenor",
@@ -240,37 +245,19 @@ def surface_wla_ntnb():
         aggfunc="mean"
     ).sort_index()
 
-    # JSON safe (float columns → string keys)
-    pivot_json = [
-        {"obs_date": idx, **{str(col): float(val) for col, val in row.items()}}
-        for idx, row in pivot.iterrows()
-    ]
+    # transformar colunas float para strings
+    pivot.columns = [str(float(c)) for c in pivot.columns]
 
-    # WLA short curve 0–5y
-    wla_surface = load_ipca_surface(CONFIG["WLA_CURVE_PATH"])
-    wla_yc = interpolate_surface(wla_surface, CONFIG["WLA_TENORS"])
-    last_wla = wla_yc.index.max()
-    wla_tenors = [float(v) for v in CONFIG["WLA_TENORS"].values()]
-    wla_values = [float(wla_yc.loc[last_wla][name]) for name in CONFIG["WLA_TENORS"]]
+    # JSON final compatível com o HTML
+    out = []
+    for idx, row in pivot.iterrows():
+        r = {"obs_date": str(idx)}
+        for col, val in row.items():
+            r[col] = None if pd.isna(val) else float(val)
+        out.append(r)
 
-    # NTNB long curve (taken from pivot)
-    long_tenors = sorted([t for t in pivot.columns if float(t) >= 5.0])
-    if len(long_tenors) > 0:
-        last_ntnb = pivot.index.max()
-        long_values = pivot.loc[last_ntnb, long_tenors].astype(float).tolist()
-    else:
-        long_values = []
+    return out
 
-    combined_tenors = wla_tenors + long_tenors
-    combined_values = wla_values + long_values
-
-    return render_template(
-        "surface_real_ipca.html",
-        surface_json=pivot_json,
-        wla_json={"tenors": wla_tenors, "yields": wla_values},
-        ntnb_json={"tenors": long_tenors, "yields": long_values},
-        combined_json={"tenors": combined_tenors, "yields": combined_values},
-    )
 
 if __name__ == "__main__":
     app.run(debug=True)

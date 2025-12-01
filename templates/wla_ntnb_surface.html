@@ -1,0 +1,47 @@
+{% extends "shared/base.html" %}
+
+{% block content %}
+
+<div class="container mt-4">
+
+    <h2 class="mb-3">Real IPCA Surface (WLA + NTNB)</h2>
+    <p class="text-muted">Curva real soberana combinando WLA (0–5 anos) e NTNB (5–30 anos).</p>
+
+    <div id="chart-container" style="height: 650px;"></div>
+
+</div>
+
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+<script>
+    d3.json("/data/wla_ntnb").then(function(data) {
+
+        if (!data || data.length === 0) {
+            document.getElementById("chart-container").innerHTML =
+                "<p class='text-danger'>Nenhum dado disponível para a superfície real WLA+NTNB.</p>";
+            return;
+        }
+
+        const x = Object.keys(data[0]).filter(k => k !== "obs_date");
+        const y = data.map(r => r["obs_date"]);
+        const z = data.map(r => x.map(k => r[k]));
+
+        Plotly.newPlot("chart-container", [{
+            z: z,
+            x: x,
+            y: y,
+            type: "surface",
+            colorscale: "Viridis"
+        }], {
+            title: "Superfície Real IPCA (WLA + NTNB)",
+            scene: {
+                xaxis:{title:"Tenor (anos)"},
+                yaxis:{title:"Data da curva"},
+                zaxis:{title:"Yield (%)"}
+            }
+        });
+
+    });
+</script>
+
+{% endblock %}
