@@ -208,11 +208,14 @@ def panel_cds_download():
 @app.route("/surface/wla_ntnb")
 def surface_wla_ntnb():
 
+    from src.utils.file_io import load_ipca_surface
+    from src.utils.interpolation import interpolate_surface
+
     corp_path = "data/real_curve_surface_corp.xlsx"
     govt_path = "data/real_curve_surface_govt.xlsx"
 
     if not (os.path.exists(corp_path) or os.path.exists(govt_path)):
-        return "Surface WLA+NTNB ainda não foi gerada. Execute main.py.", 500
+        return "Surface WLA+NTNB ainda não gerada. Execute main.py.", 500
 
     frames = []
     if os.path.exists(corp_path):
@@ -222,7 +225,7 @@ def surface_wla_ntnb():
 
     df = pd.concat(frames, ignore_index=True)
 
-    # pivot
+    # Pivot for NTNB portion only (>= 5 years)
     pivot = df.pivot_table(
         index="obs_date",
         columns="tenor",
@@ -230,43 +233,61 @@ def surface_wla_ntnb():
         aggfunc="mean"
     ).sort_index()
 
-    # Output JSON for plotly
     surface_json = pivot.reset_index().to_dict(orient="records")
 
-    # Separate corp/gov if desired for UI toggles
-    corp_json = (
-        pd.read_excel(corp_path).pivot_table(index="obs_date", columns="tenor", values="yield", aggfunc="mean")
-        if os.path.exists(corp_path) else pd.DataFrame()
-    )
-    corp_json = corp_json.reset_index().to_dict(orient="records")
+    # ---- Build separate corp/gov pivots ----
+    corp_json = []
+    if os.path.exists(corp_path):
+        df_c = pd.read_excel(corp_path)
+        corp_json = df_c.pivot_table(
+            index="obs_date",
+            columns="tenor",
+            values="yield",
+            aggfunc="mean"
+        ).reset_index().to_dict(orient="records")
 
-    govt_json = (
-        pd.read_excel(govt_path).pivot_table(index="obs_date", columns="tenor", values="yield", aggfunc="mean")
-        if os.path.exists(govt_path) else pd.DataFrame()
-    )
-    govt_json = govt_json.reset_index().to_dict(orient="records")
+    govt_json = []
+    if os.path.exists(govt_path):
+        df_g = pd.read_excel(govt_path)
+        govt_json = df_g.pivot_table(
+            index="obs_date",
+            columns="tenor",
+            values="yield",
+            aggfunc="mean"
+        ).reset_index().to_dict(orient="records")
 
-    # build curves for matching display
-    wla_t = sorted([t for t in CONFIG["WLA_TENORS"].values()])
-    ntnb_t = sorted([t for t in CONFIG["REAL_CURVE_TENORS"].values() if t >= 5])
+    # ---- MATCHING 5-YEAR SECTION ----
 
-    # Use last available date
-    last_date = pivot.index.max()
+    # Load WLA short curve directly
+    wla_surface = load_ipca_surface(CONFIG["WLA_CURVE_PATH"])
+    wla_yc = interpolate_surface(wla_surface, CONFIG["WLA_TENORS"])
 
-    wla_row = pivot.loc[last_date, wla_t].tolist()
-    ntnb_row = pivot.loc[last_date, ntnb_t].tolist()
+    last_date_wla = wla_yc.index.max()
+    wla_row_series = wla_yc.loc[last_date_wla]
 
-    combined_t = sorted(CONFIG["REAL_CURVE_TENORS"].values())
-    combined_row = pivot.loc[last_date, combined_t].tolist()
+    # Convert WLA labels to numeric
+    wla_tenors = sorted(CONFIG["WLA_TENORS"].values())
+    wla_yields = []
+    for label, years in CONFIG["WLA_TENORS"].items():
+        wla_yields.append(float(wla_row_series[label]))
+
+    # NTNB part (from pivot)
+    last_date_ntnb = pivot.index.max()
+    ntnb_tenors = sorted([t for t in pivot.columns if t >= 5])
+    ntnb_yields = pivot.loc[last_date_ntnb, ntnb_tenors].tolist()
+
+    # Combined curve: WLA short + NTNB long
+    combined_tenors = wla_tenors + ntnb_tenors
+    combined_yields = wla_yields + ntnb_yields
 
     return render_template(
         "surface_real_ipca.html",
         surface_json=surface_json,
         corp_json=corp_json,
         govt_json=govt_json,
-        wla_json={"tenors": wla_t, "yields": wla_row},
-        ntnb_json={"tenors": ntnb_t, "yields": ntnb_row},
-        combined_json={"tenors": combined_t, "yields": combined_row},
+        wla_json={"tenors": wla_tenors, "yields": wla_yields},
+        ntnb_json={"tenors": ntnb_tenors, "yields": ntnb_yields},
+        combined_json={"tenors": combined_tenors, "yields": combined_yields},
     )
 
 
