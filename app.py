@@ -63,12 +63,14 @@ def summary(prefixo):
         return "Tipo inválido", 400
 
 # ----------- CURVAS DI e IPCA (WLA) ----------------
-@app.route("/surface/<prefixo>")
-def surface(prefixo):
-    if prefixo == "di":
+@app.route("/surface/<tipo>")
+def surface(tipo):
+    if tipo == "di":
         return send_file("templates/di_surface.html")
-    elif prefixo == "ipca":
+    elif tipo == "ipca":
         return send_file("templates/ipca_surface.html")
+    elif tipo == "wla_ntnb":
+        return send_file("templates/wla_ntnb_surface.html")
     else:
         return "Tipo inválido", 400
 
@@ -209,54 +211,44 @@ def panel_cds_download():
     except FileNotFoundError:
         return "❌ Archivo panel_data_with_cds.xlsx no encontrado.", 404
 
-@app.route("/surface/wla_ntnb")
-def surface_wla_ntnb_page():
-    return send_file("templates/wla_ntnb_surface.html")
 
-
+# ---------------------------------------------------------
+# NOVA ROTA — JSON da curva real (WLA + NTNB)
+# ---------------------------------------------------------
 @app.route("/data/wla_ntnb")
 def data_wla_ntnb():
-    import pandas as pd
-    import numpy as np
+    path = "data/real_curve_surface_all.xlsx"
+    if not os.path.exists(path):
+        return jsonify({"error": "file not found"}), 404
 
-    path_corp = "data/real_curve_surface_corp.xlsx"
-    path_govt = "data/real_curve_surface_govt.xlsx"
-
-    if not (os.path.exists(path_corp) or os.path.exists(path_govt)):
-        return {"error": "Real curve files not found. Run main.py first."}, 500
-
-    frames = []
-    if os.path.exists(path_corp):
-        frames.append(pd.read_excel(path_corp))
-    if os.path.exists(path_govt):
-        frames.append(pd.read_excel(path_govt))
-
-    df = pd.concat(frames, ignore_index=True)
-
-    # garantir tenor numérico
+    df = pd.read_excel(path)
+    df["obs_date"] = df["obs_date"].astype(str)
     df["tenor"] = pd.to_numeric(df["tenor"], errors="coerce")
+
     df = df.dropna(subset=["tenor"])
 
-    # pivot padrão (mesmo que surface/ipca)
-    pivot = df.pivot_table(
-        index="obs_date",
-        columns="tenor",
-        values="yield",
-        aggfunc="mean"
-    ).sort_index()
+    pivot = (
+        df.pivot_table(
+            index="obs_date",
+            columns="tenor",
+            values="yield",
+            aggfunc="mean",
+        )
+        .sort_index()
+    )
 
-    # transformar colunas float para strings
-    pivot.columns = [str(float(c)) for c in pivot.columns]
+    pivot = pivot.reindex(sorted(pivot.columns), axis=1)
 
-    # JSON final compatível com o HTML
+    # JSON format
     out = []
-    for idx, row in pivot.iterrows():
-        r = {"obs_date": str(idx)}
-        for col, val in row.items():
-            r[col] = None if pd.isna(val) else float(val)
-        out.append(r)
+    for obs, row in pivot.iterrows():
+        entry = {"obs_date": obs}
+        for col in pivot.columns:
+            v = row[col]
+            entry[str(col)] = None if pd.isna(v) else float(v)
+        out.append(entry)
 
-    return out
+    return jsonify(out)
 
 
 if __name__ == "__main__":
