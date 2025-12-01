@@ -28,32 +28,34 @@
         </div>
     </div>
 
-    <!-- Chart -->
+    <!-- Main 3D Chart -->
     <div id="curveChart" style="height: 600px;"></div>
 
     <hr class="my-4">
 
     <h3>Matching 5 anos (WLA → NTNB)</h3>
-    <p class="text-muted">Visualização da transição suave entre a perna curta (WLA) e a perna longa (NTNB).</p>
+    <p class="text-muted">Transição suave entre a perna curta (WLA) e a perna longa (NTNB).</p>
 
-    <div class="row mt-3">
+    <div class="row">
         <div class="col-md-6">
-            <h5>Curva WLA (0–5y)</h5>
+            <h5>WLA (0–5y)</h5>
             <div id="wlaChart" style="height: 350px;"></div>
         </div>
+
         <div class="col-md-6">
-            <h5>Curva NTNB (5–30y)</h5>
+            <h5>NTNB (5–30y)</h5>
             <div id="ntnbChart" style="height: 350px;"></div>
         </div>
     </div>
 
     <hr class="my-4">
-    <h3>Curva Real Combinada (WLA + NTNB)</h3>
+    <h3>Curva Real Combinada</h3>
     <div id="combinedChart" style="height: 350px;"></div>
 
 </div>
 
 <script>
+    // JSON from Flask
     const curveData = {{ surface_json | safe }};
     const corpData = {{ corp_json | safe }};
     const govtData = {{ govt_json | safe }};
@@ -62,55 +64,42 @@
     const combinedData = {{ combined_json | safe }};
 
     function plotCurve(dataset="merged", mode="surface") {
-        let dataToUse;
+        let dataToUse = (dataset === "corp") ? corpData :
+                        (dataset === "govt") ? govtData :
+                        curveData;
 
-        if (dataset === "corp") dataToUse = corpData;
-        else if (dataset === "govt") dataToUse = govtData;
-        else dataToUse = curveData;
+        if (!dataToUse.length) { return; }
 
-        const z = [];
         const x = Object.keys(dataToUse[0]).filter(k => k !== "obs_date");
         const y = dataToUse.map(r => r["obs_date"]);
-
-        for (const r of dataToUse) {
-            let row = [];
-            for (const k of x) row.push(r[k]);
-            z.push(row);
-        }
+        const z = dataToUse.map(r => x.map(k => r[k]));
 
         let plotlyData = [];
         if (mode === "surface") {
             plotlyData.push({
-                z: z,
-                x: x,
-                y: y,
+                x: x, y: y, z: z,
                 type: "surface",
                 colorscale: "Viridis"
             });
         } else if (mode === "heatmap") {
             plotlyData.push({
-                z: z,
-                x: x,
-                y: y,
+                x: x, y: y, z: z,
                 type: "heatmap",
                 colorscale: "Viridis"
             });
         } else {
-            // Line slices per date
-            const firstDates = y.slice(0, 30);
-            for (const (i, dt) of firstDates.entries()) {
+            for (let i = 0; i < Math.min(25, y.length); i++) {
                 plotlyData.push({
                     x: x,
                     y: z[i],
                     mode: "lines",
-                    name: dt
+                    name: y[i]
                 });
             }
         }
 
         Plotly.newPlot("curveChart", plotlyData, {
-            title: "Real Curve Surface",
-            scene: { xaxis:{title:"Tenor"}, yaxis:{title:"Data"}, zaxis:{title:"Yield"} }
+            title: "Real IPCA Surface",
         });
     }
 
@@ -131,27 +120,21 @@
             x: combinedData.tenors,
             y: combinedData.yields,
             mode: "lines+markers"
-        }], {title:"Combined (WLA → NTNB)"});
+        }], {title:"Combined"});
     }
 
+    // Events
     document.getElementById("datasetSelect").addEventListener("change", () => {
-        plotCurve(
-            document.getElementById("datasetSelect").value,
-            document.getElementById("viewModeSelect").value
-        );
+        plotCurve(datasetSelect.value, viewModeSelect.value);
     });
 
     document.getElementById("viewModeSelect").addEventListener("change", () => {
-        plotCurve(
-            document.getElementById("datasetSelect").value,
-            document.getElementById("viewModeSelect").value
-        );
+        plotCurve(datasetSelect.value, viewModeSelect.value);
     });
 
+    // INITIAL LOAD
     plotCurve("merged", "surface");
     plotMatching();
-
-
 </script>
 
 {% endblock %}
